@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Tabela de Usuários
+model Usuario {
+  id        Int       @id @default(autoincrement())
+  nome      String
+  email     String    @unique
+  senha     String
+  tipo      TipoUsuario
+  quadras   Quadra[]
+  reservas  Reserva[]
+  createdAt DateTime  @default(now())
+}
+
+enum TipoUsuario {
+  LOCADOR
+  LOCATARIO
+}
+
+// Tabela de Quadras
+model Quadra {
+  id           Int       @id @default(autoincrement())
+  nome         String
+  esporte      String
+  valorPorHora Decimal   @db.Decimal(10, 2)
+  descricao    String?   @db.Text
+  locadorId    Int
+  locador      Usuario   @relation(fields: [locadorId], references: [id])
+  horarios     Horario[]
+  reservas     Reserva[]
+}
+
+// Tabela de Horários de Funcionamento da Quadra
+model Horario {
+  id             Int    @id @default(autoincrement())
+  quadraId       Int
+  quadra         Quadra @relation(fields: [quadraId], references: [id])
+  diaSemana      Int
+  horaAbertura   String
+  horaFechamento String
+}
+
+// Tabela de Reservas (Aluguéis)
+model Reserva {
+  id          Int           @id @default(autoincrement())
+  quadraId    Int
+  quadra      Quadra        @relation(fields: [quadraId], references: [id])
+  locatarioId Int
+  locatario   Usuario       @relation(fields: [locatarioId], references: [id])
+  dataInicio  DateTime
+  dataFim     DateTime
+  valorTotal  Decimal       @db.Decimal(10, 2)
+  status      StatusReserva @default(PENDENTE)
+}
+
+enum StatusReserva {
+  PENDENTE
+  AGUARDANDO_APROVACAO
+  CANCELADO
+  RESERVADO
+}
