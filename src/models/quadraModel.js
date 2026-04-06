@@ -21,7 +21,11 @@ const quadraModel = {
     include: { horarios: true }
   }),
 
-  delete: async (id) => prisma.quadra.delete({ where: { id: Number(id) } }),
+  delete: async (id) => prisma.$transaction(async (tx) => {
+    await tx.horario.deleteMany({ where: { quadraId: Number(id) } });
+    await tx.reserva.deleteMany({ where: { quadraId: Number(id) } });
+    return tx.quadra.delete({ where: { id: Number(id) } });
+  }),
 };
 
 module.exports = quadraModel;

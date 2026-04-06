@@ -12,10 +12,11 @@ const quadraController = {
   },
 
   create: async (req, res) => {
-    const { nome, esporte, valorPorHora, descricao, locadorId, horarios } = req.body;
+    const { nome, esporte, valorPorHora, descricao, horarios } = req.body;
+    const locadorId = req.user.id;
 
-    if (!nome || !esporte || !valorPorHora || !locadorId || !horarios || !Array.isArray(horarios)) {
-      return res.status(400).json({ erro: 'Campos obrigatórios: nome, esporte, valorPorHora, locadorId, horarios (array)' });
+    if (!nome || !esporte || !valorPorHora || !horarios || !Array.isArray(horarios)) {
+      return res.status(400).json({ erro: 'Campos obrigatórios: nome, esporte, valorPorHora, horarios (array)' });
     }
 
     try {
@@ -60,7 +61,7 @@ const quadraController = {
 
   update: async (req, res) => {
     const { id } = req.params;
-    const { nome, esporte, valorPorHora, descricao, locadorId, horarios } = req.body;
+    const { nome, esporte, valorPorHora, descricao, horarios } = req.body;
 
     try {
       const quadraExistente = await quadraModel.findById(id);
@@ -68,12 +69,15 @@ const quadraController = {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
 
+      if (quadraExistente.locadorId !== req.user.id) {
+        return res.status(403).json({ erro: 'Você não tem permissão para atualizar esta quadra' });
+      }
+
       const updateData = {};
       if (nome) updateData.nome = nome;
       if (esporte) updateData.esporte = esporte;
       if (valorPorHora) updateData.valorPorHora = parseFloat(valorPorHora);
       if (descricao !== undefined) updateData.descricao = descricao;
-      if (locadorId) updateData.locadorId = Number(locadorId);
 
       let quadraAtualizada;
       if (horarios && Array.isArray(horarios)) {
@@ -119,6 +123,10 @@ const quadraController = {
       const quadra = await quadraModel.findById(id);
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
+      }
+
+      if (quadra.locadorId !== req.user.id) {
+        return res.status(403).json({ erro: 'Você não tem permissão para deletar esta quadra' });
       }
 
       await quadraModel.delete(id);

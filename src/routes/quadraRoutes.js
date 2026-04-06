@@ -1,7 +1,10 @@
 const express = require('express');
 const quadraController = require('../controllers/quadraController');
+const { requireAuth, requireLocador } = require('../middleware/authMiddleware');
 
 const router = express.Router();
+
+router.use(requireAuth);
 
 /**
  * @swagger
@@ -43,7 +46,6 @@ router.get('/', quadraController.list);
  *               - nome
  *               - esporte
  *               - valorPorHora
- *               - locadorId
  *               - horarios
  *             properties:
  *               nome:
@@ -59,9 +61,6 @@ router.get('/', quadraController.list);
  *               descricao:
  *                 type: string
  *                 description: Descrição da quadra
- *               locadorId:
- *                 type: integer
- *                 description: ID do locador
  *               horarios:
  *                 type: array
  *                 items:
@@ -94,7 +93,7 @@ router.get('/', quadraController.list);
  *       500:
  *         description: Erro interno do servidor
  */
-router.post('/', quadraController.create);
+router.post('/', requireLocador, quadraController.create);
 
 /**
  * @swagger
@@ -156,8 +155,6 @@ router.get('/:id', quadraController.getById);
  *                 format: float
  *               descricao:
  *                 type: string
- *               locadorId:
- *                 type: integer
  *               horarios:
  *                 type: array
  *                 items:
@@ -185,7 +182,7 @@ router.get('/:id', quadraController.getById);
  *       500:
  *         description: Erro interno do servidor
  */
-router.put('/:id', quadraController.update);
+router.put('/:id', requireLocador, quadraController.update);
 
 /**
  * @swagger
@@ -210,6 +207,6 @@ router.put('/:id', quadraController.update);
  *       500:
  *         description: Erro interno do servidor
  */
-router.delete('/:id', quadraController.delete);
+router.delete('/:id', requireLocador, quadraController.delete);
 
 module.exports = router;
