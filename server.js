@@ -6,6 +6,7 @@ const swaggerSpec = require('./src/swagger');
 const usuarioRoutes = require('./src/routes/usuarioRoutes');
 const authRoutes = require('./src/routes/authRoutes');
 const quadraRoutes = require('./src/routes/quadraRoutes');
+const reservaRoutes = require('./src/routes/reservaRoutes');
 
 const app = express();
 app.use(express.json());
@@ -19,6 +20,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/', usuarioRoutes);
 app.use('/auth', authRoutes);
 app.use('/quadras', quadraRoutes);
+app.use('/reservas', reservaRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
