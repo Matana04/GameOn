@@ -332,6 +332,267 @@ const reservaController = {
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar reservas', detalhes: error.message });
     }
+  },
+
+  // Timer da próxima reserva do locatário (melhor prática: usa token)
+  proximaReserva: async (req, res) => {
+    try {
+      // Usar o ID do token (melhor prática de segurança)
+      const locatarioId = req.user.id;
+
+      if (req.user.tipo !== 'LOCATARIO') {
+        return res.status(403).json({ erro: 'Apenas locatários podem consultar suas próximas reservas' });
+      }
+
+      // Buscar todas as reservas do locatário
+      const reservas = await reservaModel.findByLocatario(locatarioId);
+
+      const agora = new Date();
+
+      // 1. Procurar por reservas AGUARDANDO_APROVACAO no futuro (alta prioridade)
+      const reservasAguardando = reservas
+        .filter(r => r.status === 'AGUARDANDO_APROVACAO' && new Date(r.dataInicio) > agora)
+        .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
+
+      if (reservasAguardando.length > 0) {
+        const proxima = reservasAguardando[0];
+        const dataInicio = new Date(proxima.dataInicio);
+        const tempoRestante = dataInicio - agora;
+
+        const dias = Math.floor(tempoRestante / (1000 * 60 * 60 * 24));
+        const horas = Math.floor((tempoRestante % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutos = Math.floor((tempoRestante % (1000 * 60 * 60)) / (1000 * 60));
+        const segundos = Math.floor((tempoRestante % (1000 * 60)) / 1000);
+
+        return res.json({
+          temReserva: true,
+          tipo: 'AGUARDANDO_APROVACAO',
+          proximaReserva: {
+            id: proxima.id,
+            quadra: {
+              id: proxima.quadra.id,
+              nome: proxima.quadra.nome,
+              esporte: proxima.quadra.esporte,
+              locador: proxima.quadra.locador.nome
+            },
+            periodo: {
+              dataInicio: proxima.dataInicio,
+              dataFim: proxima.dataFim
+            },
+            valorTotal: proxima.valorTotal,
+            status: proxima.status
+          },
+          dataSolicitacao: proxima.dataCriacao,
+          timer: {
+            dias,
+            horas,
+            minutos,
+            segundos,
+            formatado: `${dias}d ${horas}h ${minutos}m ${segundos}s`,
+            emSegundos: Math.floor(tempoRestante / 1000)
+          },
+          mensagem: `Sua solicitação de aluguel foi recebida mas ainda aguarda aprovação do locador. Agendado para ${dias}d ${horas}h ${minutos}m ${segundos}s`
+        });
+      }
+
+      // 2. Se não houver aguardando, procurar por reservas RESERVADO no futuro
+      const proximasReservas = reservas
+        .filter(r => r.status === 'RESERVADO' && new Date(r.dataInicio) > agora)
+        .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
+
+      // Se não houver próximas reservas
+      if (proximasReservas.length === 0) {
+        return res.json({
+          temReserva: false,
+          tipo: 'NENHUMA',
+          mensagem: 'Você não possui próximas reservas confirmadas ou solicitações pendentes',
+          proximaReserva: null
+        });
+      }
+
+      // Pegar a primeira (próxima) reserva confirmada
+      const proxima = proximasReservas[0];
+      const dataInicio = new Date(proxima.dataInicio);
+
+      // Calcular tempo restante
+      const tempoRestante = dataInicio - agora;
+
+      const dias = Math.floor(tempoRestante / (1000 * 60 * 60 * 24));
+      const horas = Math.floor((tempoRestante % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutos = Math.floor((tempoRestante % (1000 * 60 * 60)) / (1000 * 60));
+      const segundos = Math.floor((tempoRestante % (1000 * 60)) / 1000);
+
+      res.json({
+        temReserva: true,
+        tipo: 'CONFIRMADA',
+        proximaReserva: {
+          id: proxima.id,
+          quadra: {
+            id: proxima.quadra.id,
+            nome: proxima.quadra.nome,
+            esporte: proxima.quadra.esporte,
+            locador: proxima.quadra.locador.nome
+          },
+          periodo: {
+            dataInicio: proxima.dataInicio,
+            dataFim: proxima.dataFim
+          },
+          valorTotal: proxima.valorTotal,
+          status: proxima.status
+        },
+        timer: {
+          dias,
+          horas,
+          minutos,
+          segundos,
+          formatado: `${dias}d ${horas}h ${minutos}m ${segundos}s`,
+          emSegundos: Math.floor(tempoRestante / 1000)
+        },
+        mensagem: `Sua próxima reserva confirmada começa em ${dias}d ${horas}h ${minutos}m ${segundos}s`
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar próxima reserva', detalhes: error.message });
+    }
+  },
+
+  // Timer da próxima reserva de outro locatário (para locadores gerenciarem)
+  proximaReservaLocador: async (req, res) => {
+    try {
+      const { locatarioId } = req.params;
+
+      if (!locatarioId) {
+        return res.status(400).json({ erro: 'ID do locatário é obrigatório' });
+      }
+
+      if (req.user.tipo !== 'LOCADOR') {
+        return res.status(403).json({ erro: 'Apenas locadores podem consultar próximas reservas de clientes' });
+      }
+
+      // Buscar todas as reservas do locatário
+      const reservas = await reservaModel.findByLocatario(Number(locatarioId));
+
+      // Validar que essas reservas pertencem às quadras do locador
+      const minhasQuadras = await prisma.quadra.findMany({
+        where: { locadorId: req.user.id }
+      });
+      const idsMinhasQuadras = minhasQuadras.map(q => q.id);
+
+      const minhasReservas = reservas.filter(r => idsMinhasQuadras.includes(r.quadraId));
+
+      if (minhasReservas.length === 0) {
+        return res.status(404).json({ erro: 'Este cliente não possui reservas em suas quadras' });
+      }
+
+      const agora = new Date();
+
+      // 1. Procurar por reservas AGUARDANDO_APROVACAO no futuro (alta prioridade)
+      const reservasAguardando = minhasReservas
+        .filter(r => r.status === 'AGUARDANDO_APROVACAO' && new Date(r.dataInicio) > agora)
+        .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
+
+      if (reservasAguardando.length > 0) {
+        const proxima = reservasAguardando[0];
+        const dataInicio = new Date(proxima.dataInicio);
+        const tempoRestante = dataInicio - agora;
+
+        const dias = Math.floor(tempoRestante / (1000 * 60 * 60 * 24));
+        const horas = Math.floor((tempoRestante % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutos = Math.floor((tempoRestante % (1000 * 60 * 60)) / (1000 * 60));
+        const segundos = Math.floor((tempoRestante % (1000 * 60)) / 1000);
+
+        return res.json({
+          temReserva: true,
+          tipo: 'AGUARDANDO_APROVACAO',
+          locatarioId: Number(locatarioId),
+          cliente: proxima.locatario.nome,
+          proximaReserva: {
+            id: proxima.id,
+            quadra: {
+              id: proxima.quadra.id,
+              nome: proxima.quadra.nome,
+              esporte: proxima.quadra.esporte
+            },
+            periodo: {
+              dataInicio: proxima.dataInicio,
+              dataFim: proxima.dataFim
+            },
+            valorTotal: proxima.valorTotal,
+            status: proxima.status
+          },
+          dataSolicitacao: proxima.dataCriacao,
+          timer: {
+            dias,
+            horas,
+            minutos,
+            segundos,
+            formatado: `${dias}d ${horas}h ${minutos}m ${segundos}s`,
+            emSegundos: Math.floor(tempoRestante / 1000)
+          },
+          mensagem: `${proxima.locatario.nome} solicitou aluguel de ${proxima.quadra.nome} para ${dias}d ${horas}h ${minutos}m ${segundos}s. Aguardando sua aprovação`
+        });
+      }
+
+      // 2. Se não houver aguardando, procurar por reservas RESERVADO no futuro
+      const proximasReservas = minhasReservas
+        .filter(r => r.status === 'RESERVADO' && new Date(r.dataInicio) > agora)
+        .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
+
+      // Se não houver próximas reservas
+      if (proximasReservas.length === 0) {
+        return res.json({
+          temReserva: false,
+          tipo: 'NENHUMA',
+          locatarioId: Number(locatarioId),
+          cliente: minhasReservas[0]?.locatario?.nome || 'Cliente',
+          mensagem: 'Este cliente não possui próximas reservas confirmadas ou solicitações pendentes',
+          proximaReserva: null
+        });
+      }
+
+      // Pegar a primeira (próxima) reserva confirmada
+      const proxima = proximasReservas[0];
+      const dataInicio = new Date(proxima.dataInicio);
+
+      // Calcular tempo restante
+      const tempoRestante = dataInicio - agora;
+
+      const dias = Math.floor(tempoRestante / (1000 * 60 * 60 * 24));
+      const horas = Math.floor((tempoRestante % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutos = Math.floor((tempoRestante % (1000 * 60 * 60)) / (1000 * 60));
+      const segundos = Math.floor((tempoRestante % (1000 * 60)) / 1000);
+
+      res.json({
+        temReserva: true,
+        tipo: 'CONFIRMADA',
+        locatarioId: Number(locatarioId),
+        cliente: proxima.locatario.nome,
+        proximaReserva: {
+          id: proxima.id,
+          quadra: {
+            id: proxima.quadra.id,
+            nome: proxima.quadra.nome,
+            esporte: proxima.quadra.esporte
+          },
+          periodo: {
+            dataInicio: proxima.dataInicio,
+            dataFim: proxima.dataFim
+          },
+          valorTotal: proxima.valorTotal,
+          status: proxima.status
+        },
+        timer: {
+          dias,
+          horas,
+          minutos,
+          segundos,
+          formatado: `${dias}d ${horas}h ${minutos}m ${segundos}s`,
+          emSegundos: Math.floor(tempoRestante / 1000)
+        },
+        mensagem: `${proxima.locatario.nome} tem reserva em ${proxima.quadra.nome} em ${dias}d ${horas}h ${minutos}m ${segundos}s`
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar próxima reserva', detalhes: error.message });
+    }
   }
 };
 

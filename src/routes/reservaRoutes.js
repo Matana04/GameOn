@@ -34,6 +34,103 @@ router.get('/', reservaController.list);
 
 /**
  * @swagger
+ * /reservas/proxima:
+ *   get:
+ *     summary: Timer da próxima reserva do locatário (MELHOR PRÁTICA)
+ *     description: |
+ *       Mostra quanto tempo falta para a próxima reserva confirmada do locatário autenticado.
+ *       Usa o token JWT para identificar o usuário - melhor prática de segurança.
+ *       Prioridade: Primeiro retorna AGUARDANDO_APROVACAO, depois CONFIRMADA.
+ *       Retorna um timer com dias, horas, minutos e segundos.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Informações da próxima reserva com timer
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 temReserva:
+ *                   type: boolean
+ *                 tipo:
+ *                   type: string
+ *                   enum: [CONFIRMADA, AGUARDANDO_APROVACAO, NENHUMA]
+ *                   description: Tipo de status da próxima reserva
+ *                 proximaReserva:
+ *                   type: object
+ *                 dataSolicitacao:
+ *                   type: string
+ *                   description: Data da solicitação (apenas se AGUARDANDO_APROVACAO)
+ *                 timer:
+ *                   type: object
+ *                 mensagem:
+ *                   type: string
+ *       403:
+ *         description: Apenas locatários podem consultar
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get('/proxima', reservaController.proximaReserva);
+
+/**
+ * @swagger
+ * /reservas/clientes/{locatarioId}/proxima:
+ *   get:
+ *     summary: Timer da próxima reserva de um cliente (para locadores)
+ *     description: |
+ *       Mostra quanto tempo falta para a próxima reserva confirmada de um cliente específico.
+ *       Apenas locadores podem consultar - valida se o cliente tem reservas em suas quadras.
+ *       Prioridade: Primeiro retorna AGUARDANDO_APROVACAO, depois CONFIRMADA.
+ *       Retorna um timer com dias, horas, minutos e segundos.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: locatarioId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID do cliente (locatário)
+ *     responses:
+ *       200:
+ *         description: Informações da próxima reserva do cliente com timer
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 temReserva:
+ *                   type: boolean
+ *                 tipo:
+ *                   type: string
+ *                   enum: [CONFIRMADA, AGUARDANDO_APROVACAO, NENHUMA]
+ *                   description: Tipo de status da próxima reserva
+ *                 locatarioId:
+ *                   type: integer
+ *                 cliente:
+ *                   type: string
+ *                 proximaReserva:
+ *                   type: object
+ *                 dataSolicitacao:
+ *                   type: string
+ *                   description: Data da solicitação (apenas se AGUARDANDO_APROVACAO)
+ *                 timer:
+ *                   type: object
+ *                 mensagem:
+ *                   type: string
+ *       403:
+ *         description: Apenas locadores podem consultar
+ *       404:
+ *         description: Cliente não tem reservas em suas quadras
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get('/clientes/:locatarioId/proxima', reservaController.proximaReservaLocador);
+
+/**
+ * @swagger
  * /reservas/disponibilidade:
  *   get:
  *     summary: Verifica disponibilidade de uma quadra em um período

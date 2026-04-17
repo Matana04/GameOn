@@ -135,6 +135,45 @@ const quadraController = {
       res.status(500).json({ erro: 'Erro ao deletar quadra', detalhes: error.message });
     }
   },
+
+  listWithHorarios: async (req, res) => {
+    try {
+      const quadras = await quadraModel.findAll();
+      
+      const quadrasFormatadas = quadras.map(quadra => {
+        const horariosFormatados = quadra.horarios.map(horario => {
+          const nomeDia = obterNomeDia(horario.diaSemana);
+          return {
+            dia: nomeDia,
+            diaSemana: horario.diaSemana,
+            abertura: horario.horaAbertura,
+            fechamento: horario.horaFechamento,
+            descricao: `${quadra.nome} está liberada ${nomeDia} das ${horario.horaAbertura} às ${horario.horaFechamento}`
+          };
+        });
+
+        return {
+          id: quadra.id,
+          nome: quadra.nome,
+          esporte: quadra.esporte,
+          valorPorHora: quadra.valorPorHora,
+          descricao: quadra.descricao,
+          locador: quadra.locador.nome,
+          horarios: horariosFormatados,
+          resumo: horariosFormatados.map(h => h.descricao)
+        };
+      });
+
+      res.json(quadrasFormatadas);
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar quadras', detalhes: error.message });
+    }
+  }
 };
+
+function obterNomeDia(dia) {
+  const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  return dias[dia];
+}
 
 module.exports = quadraController;

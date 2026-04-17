@@ -97,6 +97,59 @@ router.post('/', requireLocador, quadraController.create);
 
 /**
  * @swagger
+ * /quadras/horarios-disponiveis:
+ *   get:
+ *     summary: Lista todas as quadras com horários disponíveis de forma legível
+ *     description: |
+ *       Retorna todas as quadras formatadas com seus horários de funcionamento.
+ *       Exemplo de resposta:
+ *       "Quadra Central está liberada quarta-feira das 18 às 22"
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de quadras com horários formatados
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   nome:
+ *                     type: string
+ *                   esporte:
+ *                     type: string
+ *                   valorPorHora:
+ *                     type: number
+ *                   locador:
+ *                     type: string
+ *                   horarios:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         dia:
+ *                           type: string
+ *                         abertura:
+ *                           type: string
+ *                         fechamento:
+ *                           type: string
+ *                         descricao:
+ *                           type: string
+ *                   resumo:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get('/horarios-disponiveis', quadraController.listWithHorarios);
+
+/**
+ * @swagger
  * /quadras/{id}:
  *   get:
  *     summary: Busca uma quadra por ID
