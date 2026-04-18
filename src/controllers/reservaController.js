@@ -1,6 +1,7 @@
 const reservaModel = require('../models/reservaModel');
 const quadraModel = require('../models/quadraModel');
 const prisma = require('../database/prismaClient');
+const { converterParaUTC, formatarISOLocal } = require('../utils/dateUtils');
 
 const reservaController = {
   // Listar todas as reservas do usuário autenticado
@@ -15,7 +16,11 @@ const reservaController = {
         reservas = await reservaModel.findByLocatario(req.user.id);
       }
       
-      res.json(reservas);
+      res.json(reservas.map(r => ({
+        ...r,
+        dataInicio: formatarISOLocal(r.dataInicio),
+        dataFim: formatarISOLocal(r.dataFim)
+      })));
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar reservas', detalhes: error.message });
     }
@@ -98,8 +103,9 @@ const reservaController = {
     }
 
     try {
-      const dataInicioObj = new Date(dataInicio);
-      const dataFimObj = new Date(dataFim);
+      // Converter datas de hora local para UTC
+      const dataInicioObj = converterParaUTC(dataInicio);
+      const dataFimObj = converterParaUTC(dataFim);
 
       // Validar formato de data
       if (isNaN(dataInicioObj.getTime()) || isNaN(dataFimObj.getTime())) {
@@ -111,8 +117,9 @@ const reservaController = {
         return res.status(400).json({ erro: 'Data de início deve ser anterior à data de fim' });
       }
 
-      // Validar se a reserva é no futuro
-      if (dataInicioObj < new Date()) {
+      // Validar se a reserva é no futuro (convertendo data atual para timezone local)
+      const agora = new Date();
+      if (dataInicioObj < agora) {
         return res.status(400).json({ erro: 'Não é possível fazer reservas no passado' });
       }
 
@@ -122,8 +129,10 @@ const reservaController = {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
 
-      // Validar horários de funcionamento
-      const horariosOK = validarHorariosFuncionamento(quadra, dataInicioObj, dataFimObj);
+      // Validar horários de funcionamento (usar datas locais para validação)
+      const dataInicioLocal = new Date(dataInicio);
+      const dataFimLocal = new Date(dataFim);
+      const horariosOK = validarHorariosFuncionamento(quadra, dataInicioLocal, dataFimLocal);
       if (!horariosOK.valido) {
         return res.status(400).json({ erro: horariosOK.erro });
       }
@@ -135,15 +144,15 @@ const reservaController = {
           erro: 'A quadra já possui reserva neste período',
           conflitosExistentes: conflitos.map(c => ({
             id: c.id,
-            dataInicio: c.dataInicio,
-            dataFim: c.dataFim,
+            dataInicio: formatarISOLocal(c.dataInicio),
+            dataFim: formatarISOLocal(c.dataFim),
             status: c.status
           }))
         });
       }
 
       // Calcular valor total
-      const duracao = (dataFimObj - dataInicioObj) / 3600000; // Em horas
+      const duracao = (dataFimLocal - dataInicioLocal) / 3600000; // Em horas
       if (duracao <= 0 || duracao > 24) {
         return res.status(400).json({ erro: 'Duração deve estar entre 0 e 24 horas' });
       }
@@ -159,7 +168,8 @@ const reservaController = {
             dataInicio: dataInicioObj,
             dataFim: dataFimObj,
             valorTotal: parseFloat(valorTotal.toFixed(2)),
-            status: 'AGUARDANDO_APROVACAO'
+            status: 'AGUARDANDO_APROVACAO',
+            timezoneOffset: -180 // UTC-3
           },
           include: {
             quadra: { include: { locador: true, horarios: true } },
@@ -179,8 +189,8 @@ const reservaController = {
           },
           locatario: novaReserva.locatario.nome,
           periodo: {
-            dataInicio: novaReserva.dataInicio,
-            dataFim: novaReserva.dataFim,
+            dataInicio: formatarISOLocal(novaReserva.dataInicio),
+            dataFim: formatarISOLocal(novaReserva.dataFim),
             duracao: `${duracao} horas`
           },
           valorTotal: novaReserva.valorTotal,
@@ -210,7 +220,11 @@ const reservaController = {
         return res.status(403).json({ erro: 'Você não tem permissão para visualizar esta reserva' });
       }
 
-      res.json(reserva);
+      res.json({
+        ...reserva,
+        dataInicio: formatarISOLocal(reserva.dataInicio),
+        dataFim: formatarISOLocal(reserva.dataFim)
+      });
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar reserva', detalhes: error.message });
     }
@@ -322,8 +336,8 @@ const reservaController = {
           id: r.id,
           locatario: r.locatario.nome,
           periodo: {
-            dataInicio: r.dataInicio,
-            dataFim: r.dataFim
+            dataInicio: formatarISOLocal(r.dataInicio),
+            dataFim: formatarISOLocal(r.dataFim)
           },
           status: r.status,
           valorTotal: r.valorTotal
@@ -376,8 +390,8 @@ const reservaController = {
               locador: proxima.quadra.locador.nome
             },
             periodo: {
-              dataInicio: proxima.dataInicio,
-              dataFim: proxima.dataFim
+              dataInicio: formatarISOLocal(proxima.dataInicio),
+              dataFim: formatarISOLocal(proxima.dataFim)
             },
             valorTotal: proxima.valorTotal,
             status: proxima.status
@@ -434,8 +448,8 @@ const reservaController = {
             locador: proxima.quadra.locador.nome
           },
           periodo: {
-            dataInicio: proxima.dataInicio,
-            dataFim: proxima.dataFim
+            dataInicio: formatarISOLocal(proxima.dataInicio),
+            dataFim: formatarISOLocal(proxima.dataFim)
           },
           valorTotal: proxima.valorTotal,
           status: proxima.status
@@ -513,8 +527,8 @@ const reservaController = {
               esporte: proxima.quadra.esporte
             },
             periodo: {
-              dataInicio: proxima.dataInicio,
-              dataFim: proxima.dataFim
+              dataInicio: formatarISOLocal(proxima.dataInicio),
+              dataFim: formatarISOLocal(proxima.dataFim)
             },
             valorTotal: proxima.valorTotal,
             status: proxima.status
@@ -574,8 +588,8 @@ const reservaController = {
             esporte: proxima.quadra.esporte
           },
           periodo: {
-            dataInicio: proxima.dataInicio,
-            dataFim: proxima.dataFim
+            dataInicio: formatarISOLocal(proxima.dataInicio),
+            dataFim: formatarISOLocal(proxima.dataFim)
           },
           valorTotal: proxima.valorTotal,
           status: proxima.status
@@ -592,6 +606,63 @@ const reservaController = {
       });
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar próxima reserva', detalhes: error.message });
+    }
+  },
+
+  // Buscar todas as reservas do locador para um dia específico
+  getReservasLocadorDia: async (req, res) => {
+    try {
+      if (req.user.tipo !== 'LOCADOR') {
+        return res.status(403).json({ erro: 'Apenas locadores podem acessar essa rota' });
+      }
+
+      const { data } = req.query;
+
+      if (!data) {
+        return res.status(400).json({ erro: 'Parâmetro obrigatório: data (formato: YYYY-MM-DD)' });
+      }
+
+      // Validar formato da data YYYY-MM-DD
+      const regexData = /^\d{4}-\d{2}-\d{2}$/;
+      if (!regexData.test(data)) {
+        return res.status(400).json({ erro: 'Formato de data inválido. Use: YYYY-MM-DD' });
+      }
+
+      const [year, month, day] = data.split('-');
+      const dataObj = new Date(year, month - 1, day);
+      
+      if (isNaN(dataObj.getTime())) {
+        return res.status(400).json({ erro: 'Data inválida' });
+      }
+
+      const reservas = await reservaModel.findByLocadorAndDate(req.user.id, data);
+
+      res.json({
+        data: data,
+        totalReservas: reservas.length,
+        reservas: reservas.map(r => ({
+          id: r.id,
+          quadra: {
+            id: r.quadra.id,
+            nome: r.quadra.nome,
+            esporte: r.quadra.esporte,
+            valorPorHora: r.quadra.valorPorHora
+          },
+          locatario: {
+            id: r.locatario.id,
+            nome: r.locatario.nome,
+            telefone: r.locatario.telefone
+          },
+          periodo: {
+            dataInicio: formatarISOLocal(r.dataInicio),
+            dataFim: formatarISOLocal(r.dataFim)
+          },
+          status: r.status,
+          valorTotal: r.valorTotal
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar reservas do dia', detalhes: error.message });
     }
   }
 };

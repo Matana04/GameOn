@@ -54,10 +54,11 @@ model Reserva {
   quadra      Quadra        @relation(fields: [quadraId], references: [id])
   locatarioId Int
   locatario   Usuario       @relation(fields: [locatarioId], references: [id])
-  dataInicio  DateTime
-  dataFim     DateTime
+  dataInicio  DateTime      @db.DateTime(6)
+  dataFim     DateTime      @db.DateTime(6)
   valorTotal  Decimal       @db.Decimal(10, 2)
   status      StatusReserva @default(PENDENTE)
+  timezoneOffset Int        @default(-180) // Offset em minutos (padrão: UTC-3)
 }
 
 enum StatusReserva {

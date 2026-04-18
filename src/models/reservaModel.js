@@ -1,4 +1,16 @@
 const prisma = require('../database/prismaClient');
+const { formatarISOLocal } = require('../utils/dateUtils');
+
+/**
+ * Formata uma reserva convertendo datas para hora local
+ */
+function formatarReserva(reserva) {
+  return {
+    ...reserva,
+    dataInicio: formatarISOLocal(reserva.dataInicio),
+    dataFim: formatarISOLocal(reserva.dataFim)
+  };
+}
 
 const reservaModel = {
   // Buscar todas as reservas
@@ -104,6 +116,31 @@ const reservaModel = {
       disponivel: conflitos.length === 0,
       conflitos
     };
+  },
+
+  // Buscar reservas do locador para um dia específico
+  findByLocadorAndDate: async (locadorId, data) => {
+    // Convertendo a data string (YYYY-MM-DD) para objeto Date
+    const [year, month, day] = data.split('-');
+    const dataObj = new Date(year, month - 1, day, 0, 0, 0, 0);
+    
+    const proximoDia = new Date(dataObj);
+    proximoDia.setDate(proximoDia.getDate() + 1);
+
+    return prisma.reserva.findMany({
+      where: {
+        quadra: { locadorId: Number(locadorId) },
+        dataInicio: { gte: dataObj },
+        dataFim: { lt: proximoDia }
+      },
+      include: {
+        quadra: true,
+        locatario: true
+      },
+      orderBy: {
+        dataInicio: 'asc'
+      }
+    });
   }
 };
 

@@ -343,6 +343,64 @@ router.delete('/:id/cancelar', reservaController.cancel);
 
 /**
  * @swagger
+ * /reservas/locador/dia:
+ *   get:
+ *     summary: Listar todas as reservas do locador para um dia específico
+ *     description: |
+ *       Mostra todas as reservas de todas as quadras do locador autenticado para um dia específico.
+ *       Útil para visualizar agenda do dia.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: data
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Data no formato YYYY-MM-DD
+ *         example: "2026-04-17"
+ *     responses:
+ *       200:
+ *         description: Lista de reservas do dia
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: string
+ *                   format: date
+ *                 totalReservas:
+ *                   type: integer
+ *                 reservas:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       quadra:
+ *                         type: object
+ *                       locatario:
+ *                         type: object
+ *                       periodo:
+ *                         type: object
+ *                       status:
+ *                         type: string
+ *                       valorTotal:
+ *                         type: number
+ *       400:
+ *         description: Parâmetro de data inválido
+ *       403:
+ *         description: Apenas locadores podem acessar
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get('/locador/dia', reservaController.getReservasLocadorDia);
+
+/**
+ * @swagger
  * /reservas/quadra/{quadraId}:
  *   get:
  *     summary: Listar todas as reservas de uma quadra

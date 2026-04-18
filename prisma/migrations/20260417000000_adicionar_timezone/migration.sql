@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `Reserva` MODIFY `dataInicio` DATETIME(6) NOT NULL,
+MODIFY `dataFim` DATETIME(6) NOT NULL,
+ADD COLUMN `timezoneOffset` INT NOT NULL DEFAULT -180;
