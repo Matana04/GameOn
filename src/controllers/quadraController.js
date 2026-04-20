@@ -1,10 +1,24 @@
 const quadraModel = require('../models/quadraModel');
+const reservaModel = require('../models/reservaModel');
 const prisma = require('../database/prismaClient');
 
 const quadraController = {
   list: async (req, res) => {
     try {
-      const quadras = await quadraModel.findAll();
+      const { cidade, estado, esporte, valorMin, valorMax } = req.query;
+      const where = {};
+      
+      if (cidade) where.cidade = { contains: cidade };
+      if (estado) where.estado = estado;
+      if (esporte) where.esporte = { contains: esporte };
+      
+      if (valorMin || valorMax) {
+        where.valorPorHora = {};
+        if (valorMin) where.valorPorHora.gte = parseFloat(valorMin);
+        if (valorMax) where.valorPorHora.lte = parseFloat(valorMax);
+      }
+
+      const quadras = await prisma.quadra.findMany({ where, include: { horarios: true } });
       res.json(quadras);
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar quadras', detalhes: error.message });
@@ -12,7 +26,7 @@ const quadraController = {
   },
 
   create: async (req, res) => {
-    const { nome, esporte, valorPorHora, descricao, horarios } = req.body;
+    const { nome, esporte, valorPorHora, descricao, endereco, cidade, estado, cep, horarios } = req.body;
     const locadorId = req.user.id;
 
     if (!nome || !esporte || !valorPorHora || !horarios || !Array.isArray(horarios)) {
@@ -22,7 +36,17 @@ const quadraController = {
     try {
       const novaQuadra = await prisma.$transaction(async (tx) => {
         const quadra = await tx.quadra.create({
-          data: { nome, esporte, valorPorHora: parseFloat(valorPorHora), descricao, locadorId: Number(locadorId) }
+          data: { 
+            nome, 
+            esporte, 
+            valorPorHora: parseFloat(valorPorHora), 
+            descricao, 
+            endereco,
+            cidade,
+            estado,
+            cep,
+            locadorId: Number(locadorId) 
+          }
         });
 
         const horariosCriados = await Promise.all(
@@ -37,7 +61,7 @@ const quadraController = {
         );
 
         return { ...quadra, horarios: horariosCriados };
-      });
+      }, { timeout: 10000 });
 
       res.status(201).json(novaQuadra);
     } catch (error) {
@@ -61,7 +85,7 @@ const quadraController = {
 
   update: async (req, res) => {
     const { id } = req.params;
-    const { nome, esporte, valorPorHora, descricao, horarios } = req.body;
+    const { nome, esporte, valorPorHora, descricao, endereco, cidade, estado, cep, horarios } = req.body;
 
     try {
       const quadraExistente = await quadraModel.findById(id);
@@ -78,6 +102,10 @@ const quadraController = {
       if (esporte) updateData.esporte = esporte;
       if (valorPorHora) updateData.valorPorHora = parseFloat(valorPorHora);
       if (descricao !== undefined) updateData.descricao = descricao;
+      if (endereco !== undefined) updateData.endereco = endereco;
+      if (cidade !== undefined) updateData.cidade = cidade;
+      if (estado !== undefined) updateData.estado = estado;
+      if (cep !== undefined) updateData.cep = cep;
 
       let quadraAtualizada;
       if (horarios && Array.isArray(horarios)) {
@@ -167,6 +195,123 @@ const quadraController = {
       res.json(quadrasFormatadas);
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar quadras', detalhes: error.message });
+    }
+  },
+
+  // Filtrar quadras por critérios (para locatários)
+  filtrar: async (req, res) => {
+    const { 
+      localizacao, // cidade ou estado
+      locadorId,   // ID do locador
+      esporte,     // tipo de esporte
+      dataInicio,  // para verificar disponibilidade
+      dataFim      // para verificar disponibilidade
+    } = req.query;
+
+    try {
+      // Construir filtros base
+      const where = {};
+
+      if (localizacao) {
+        where.OR = [
+          { cidade: { contains: localizacao, mode: 'insensitive' } },
+          { estado: { contains: localizacao, mode: 'insensitive' } },
+          { endereco: { contains: localizacao, mode: 'insensitive' } }
+        ];
+      }
+
+      if (locadorId) {
+        where.locadorId = Number(locadorId);
+      }
+
+      if (esporte) {
+        where.esporte = { contains: esporte, mode: 'insensitive' };
+      }
+
+      // Buscar quadras com filtros
+      let quadras = await prisma.quadra.findMany({
+        where,
+        include: { 
+          horarios: true, 
+          locador: { select: { id: true, nome: true, email: true } },
+          reservas: {
+            where: {
+              status: { in: ['RESERVADO', 'AGUARDANDO_APROVACAO'] }
+            }
+          }
+        }
+      });
+
+      // Se dataInicio e dataFim fornecidos, filtrar por disponibilidade
+      if (dataInicio && dataFim) {
+        const dataInicioObj = new Date(dataInicio);
+        const dataFimObj = new Date(dataFim);
+
+        if (isNaN(dataInicioObj.getTime()) || isNaN(dataFimObj.getTime())) {
+          return res.status(400).json({ erro: 'Formato de data inválido para dataInicio ou dataFim' });
+        }
+
+        // Filtrar quadras disponíveis
+        const quadrasDisponiveis = [];
+        for (const quadra of quadras) {
+          const availability = await reservaModel.findAvailability(quadra.id, dataInicioObj, dataFimObj);
+          if (availability.disponivel) {
+            quadrasDisponiveis.push({
+              ...quadra,
+              disponivel: true,
+              periodo: {
+                dataInicio: dataInicioObj.toISOString(),
+                dataFim: dataFimObj.toISOString()
+              }
+            });
+          } else {
+            quadrasDisponiveis.push({
+              ...quadra,
+              disponivel: false,
+              periodo: {
+                dataInicio: dataInicioObj.toISOString(),
+                dataFim: dataFimObj.toISOString()
+              },
+              conflitos: availability.conflitos.length
+            });
+          }
+        }
+        quadras = quadrasDisponiveis;
+      } else {
+        // Sem período, marcar como não verificado
+        quadras = quadras.map(q => ({ ...q, disponivel: null }));
+      }
+
+      // Formatar resposta
+      const quadrasFormatadas = quadras.map(quadra => ({
+        id: quadra.id,
+        nome: quadra.nome,
+        esporte: quadra.esporte,
+        valorPorHora: quadra.valorPorHora,
+        descricao: quadra.descricao,
+        endereco: quadra.endereco,
+        cidade: quadra.cidade,
+        estado: quadra.estado,
+        cep: quadra.cep,
+        locador: quadra.locador,
+        horarios: quadra.horarios.map(h => ({
+          diaSemana: h.diaSemana,
+          horaAbertura: h.horaAbertura,
+          horaFechamento: h.horaFechamento,
+          nomeDia: obterNomeDia(h.diaSemana)
+        })),
+        disponivel: quadra.disponivel,
+        periodo: quadra.periodo,
+        conflitos: quadra.conflitos || 0
+      }));
+
+      res.json({
+        total: quadrasFormatadas.length,
+        filtros: { localizacao, locadorId, esporte, dataInicio, dataFim },
+        quadras: quadrasFormatadas
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao filtrar quadras', detalhes: error.message });
     }
   }
 };

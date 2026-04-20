@@ -10,13 +10,39 @@ router.use(requireAuth);
  * @swagger
  * /quadras:
  *   get:
- *     summary: Lista todas as quadras
- *     description: Retorna uma lista de todas as quadras cadastradas
+ *     summary: Lista todas as quadras com filtros opcionais
+ *     description: Retorna uma lista de quadras, com possibilidade de filtrar por cidade, estado, esporte e faixa de preço
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: cidade
+ *         schema:
+ *           type: string
+ *         description: Filtrar por cidade (busca parcial, case-insensitive)
+ *       - in: query
+ *         name: estado
+ *         schema:
+ *           type: string
+ *         description: Filtrar por estado
+ *       - in: query
+ *         name: esporte
+ *         schema:
+ *           type: string
+ *         description: Filtrar por esporte (busca parcial, case-insensitive)
+ *       - in: query
+ *         name: valorMin
+ *         schema:
+ *           type: number
+ *         description: Valor mínimo por hora
+ *       - in: query
+ *         name: valorMax
+ *         schema:
+ *           type: number
+ *         description: Valor máximo por hora
  *     responses:
  *       200:
- *         description: Lista de quadras
+ *         description: Lista de quadras filtradas
  *         content:
  *           application/json:
  *             schema:
@@ -261,5 +287,124 @@ router.put('/:id', requireLocador, quadraController.update);
  *         description: Erro interno do servidor
  */
 router.delete('/:id', requireLocador, quadraController.delete);
+
+/**
+ * @swagger
+ * /quadras/filtrar:
+ *   get:
+ *     summary: Filtrar quadras por critérios
+ *     description: |
+ *       Permite aos locatários filtrar quadras por localização, locador, esporte e disponibilidade de horário.
+ *       Parâmetros de query opcionais:
+ *       - localizacao: cidade, estado ou endereço (busca parcial)
+ *       - locadorId: ID do locador/estabelecimento
+ *       - esporte: tipo de esporte (busca parcial)
+ *       - dataInicio: data/hora inicial para verificar disponibilidade (ISO format)
+ *       - dataFim: data/hora final para verificar disponibilidade (ISO format)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: localizacao
+ *         schema:
+ *           type: string
+ *         description: Cidade, estado ou endereço para busca
+ *       - in: query
+ *         name: locadorId
+ *         schema:
+ *           type: integer
+ *         description: ID do locador
+ *       - in: query
+ *         name: esporte
+ *         schema:
+ *           type: string
+ *         description: Tipo de esporte
+ *       - in: query
+ *         name: dataInicio
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Data/hora inicial para verificar disponibilidade
+ *       - in: query
+ *         name: dataFim
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Data/hora final para verificar disponibilidade
+ *     responses:
+ *       200:
+ *         description: Lista de quadras filtradas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   description: Número total de quadras encontradas
+ *                 filtros:
+ *                   type: object
+ *                   description: Filtros aplicados
+ *                 quadras:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       nome:
+ *                         type: string
+ *                       esporte:
+ *                         type: string
+ *                       valorPorHora:
+ *                         type: number
+ *                       descricao:
+ *                         type: string
+ *                       endereco:
+ *                         type: string
+ *                       cidade:
+ *                         type: string
+ *                       estado:
+ *                         type: string
+ *                       cep:
+ *                         type: string
+ *                       locador:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           nome:
+ *                             type: string
+ *                           email:
+ *                             type: string
+ *                       horarios:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             diaSemana:
+ *                               type: integer
+ *                             horaAbertura:
+ *                               type: string
+ *                             horaFechamento:
+ *                               type: string
+ *                             nomeDia:
+ *                               type: string
+ *                       disponivel:
+ *                         type: boolean
+ *                         nullable: true
+ *                         description: true=disponível, false=indisponível, null=não verificado
+ *                       periodo:
+ *                         type: object
+ *                         description: Período verificado (se dataInicio/dataFim fornecidos)
+ *                       conflitos:
+ *                         type: integer
+ *                         description: Número de conflitos encontrados
+ *       400:
+ *         description: Parâmetros inválidos
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get('/filtrar', quadraController.filtrar);
 
 module.exports = router;

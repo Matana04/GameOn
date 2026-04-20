@@ -31,6 +31,10 @@ model Quadra {
   esporte      String
   valorPorHora Decimal   @db.Decimal(10, 2)
   descricao    String?   @db.Text
+  endereco     String?   // Endereço completo da quadra
+  cidade       String?   // Cidade onde fica a quadra
+  estado       String?   // Estado (UF)
+  cep          String?   // CEP opcional
   locadorId    Int
   locador      Usuario   @relation(fields: [locadorId], references: [id])
   horarios     Horario[]

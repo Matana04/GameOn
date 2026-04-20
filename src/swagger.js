@@ -74,6 +74,22 @@ const swaggerDefinition = {
             type: 'string',
             description: 'Descrição da quadra',
           },
+          endereco: {
+            type: 'string',
+            description: 'Endereço completo da quadra',
+          },
+          cidade: {
+            type: 'string',
+            description: 'Cidade onde fica a quadra',
+          },
+          estado: {
+            type: 'string',
+            description: 'Estado (UF) onde fica a quadra',
+          },
+          cep: {
+            type: 'string',
+            description: 'CEP da quadra',
+          },
           locadorId: {
             type: 'integer',
             description: 'ID do locador proprietário',
