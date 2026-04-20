@@ -153,7 +153,7 @@ router.get('/clientes/:locatarioId/proxima', reservaController.proximaReservaLoc
  *           type: string
  *           format: date-time
  *         description: Data e hora de início (ISO format ou yyyy-MM-dd HH:mm)
- *         example: "2026-04-20T14:00:00" ou "2026-04-20 14:00"
+ *         example: "2026-04-20T14:00:00"
  *       - name: dataFim
  *         in: query
  *         required: true
@@ -161,7 +161,7 @@ router.get('/clientes/:locatarioId/proxima', reservaController.proximaReservaLoc
  *           type: string
  *           format: date-time
  *         description: Data e hora de término (ISO format ou yyyy-MM-dd HH:mm)
- *         example: "2026-04-20T16:00:00" ou "2026-04-20 16:00"
+ *         example: "2026-04-20T16:00:00"
  *     responses:
  *       200:
  *         description: Status de disponibilidade
