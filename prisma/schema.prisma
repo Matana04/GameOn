@@ -59,6 +59,9 @@ model Reserva {
   valorTotal  Decimal       @db.Decimal(10, 2)
   status      StatusReserva @default(PENDENTE)
   timezoneOffset Int        @default(-180) // Offset em minutos (padrão: UTC-3)
+  posicaoFila Int?          // Posição na fila de espera (null se não está em fila)
+  dataOferta  DateTime?     // Data/hora quando foi ofertado ao locatário
+  createdAt   DateTime      @default(now()) // Para ordenar FIFO
 }
 
 enum StatusReserva {
@@ -66,4 +69,6 @@ enum StatusReserva {
   AGUARDANDO_APROVACAO
   CANCELADO
   RESERVADO
+  EM_FILA
+  OFERECIDO_LOCATARIO
 }

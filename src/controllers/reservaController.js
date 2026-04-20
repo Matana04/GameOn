@@ -1,7 +1,9 @@
 const reservaModel = require('../models/reservaModel');
 const quadraModel = require('../models/quadraModel');
+const emailService = require('../services/emailService');
 const prisma = require('../database/prismaClient');
 const { converterParaUTC, formatarISOLocal } = require('../utils/dateUtils');
+const filaService = require('../services/filaService');
 
 const reservaController = {
   // Listar todas as reservas do usuário autenticado
@@ -139,17 +141,86 @@ const reservaController = {
 
       // Validar conflitos de reserva
       const conflitos = await reservaModel.findConflicts(Number(quadraId), dataInicioObj, dataFimObj);
+      
       if (conflitos.length > 0) {
-        return res.status(409).json({ 
-          erro: 'A quadra já possui reserva neste período',
-          conflitosExistentes: conflitos.map(c => ({
-            id: c.id,
-            dataInicio: formatarISOLocal(c.dataInicio),
-            dataFim: formatarISOLocal(c.dataFim),
-            status: c.status
-          }))
-        });
+        // Há conflito - tentar adicionar à fila
+        try {
+          const eligibilidade = await filaService.verificarEligibilidadeFila(
+            Number(quadraId),
+            dataInicioObj,
+            dataFimObj
+          );
+
+          // Calcular valor total
+          const duracao = (dataFimLocal - dataInicioLocal) / 3600000; // Em horas
+          if (duracao <= 0 || duracao > 24) {
+            return res.status(400).json({ erro: 'Duração deve estar entre 0 e 24 horas' });
+          }
+
+          const valorTotal = parseFloat(quadra.valorPorHora) * duracao;
+
+          // Criar reserva com status EM_FILA
+          const novaReservaFila = await prisma.reserva.create({
+            data: {
+              quadraId: Number(quadraId),
+              locatarioId: Number(locatarioId),
+              dataInicio: dataInicioObj,
+              dataFim: dataFimObj,
+              valorTotal: parseFloat(valorTotal.toFixed(2)),
+              status: 'EM_FILA',
+              timezoneOffset: -180
+            },
+            include: {
+              quadra: { include: { locador: true, horarios: true } },
+              locatario: true
+            }
+          });
+
+          // Adicionar à fila (vai gerar email)
+          const reservaFila = await filaService.adicionarFila(novaReservaFila);
+
+          return res.status(202).json({
+            mensagem: 'A quadra já está reservada para este horário. Você foi adicionado à fila de espera!',
+            emFila: true,
+            reserva: {
+              id: reservaFila.id,
+              quadra: {
+                id: reservaFila.quadra.id,
+                nome: reservaFila.quadra.nome,
+                esporte: reservaFila.quadra.esporte
+              },
+              locatario: reservaFila.locatario.nome,
+              periodo: {
+                dataInicio: formatarISOLocal(reservaFila.dataInicio),
+                dataFim: formatarISOLocal(reservaFila.dataFim),
+                duracao: `${(dataFimLocal - dataInicioLocal) / 3600000} horas`
+              },
+              valorTotal: reservaFila.valorTotal,
+              status: 'EM_FILA',
+              posicaoFila: reservaFila.posicaoFila,
+              conflitosExistentes: conflitos.map(c => ({
+                id: c.id,
+                dataInicio: formatarISOLocal(c.dataInicio),
+                dataFim: formatarISOLocal(c.dataFim),
+                locatario: c.locatario.nome,
+                status: c.status
+              }))
+            }
+          });
+        } catch (erroFila) {
+          // Não está elegível para fila (menos de 6 horas antes)
+          return res.status(409).json({ 
+            erro: erroFila.message || 'A quadra já possui reserva neste período',
+            conflitosExistentes: conflitos.map(c => ({
+              id: c.id,
+              dataInicio: formatarISOLocal(c.dataInicio),
+              dataFim: formatarISOLocal(c.dataFim),
+              status: c.status
+            }))
+          });
+        }
       }
+
 
       // Calcular valor total
       const duracao = (dataFimLocal - dataInicioLocal) / 3600000; // Em horas
@@ -177,6 +248,41 @@ const reservaController = {
           }
         });
       });
+
+      // Enviar email para o locatário confirmando que a reserva foi solicitada
+      await emailService.enviar(
+        novaReserva.locatario.email,
+        `${novaReserva.quadra.nome} - Sua reserva foi enviada para aprovação`,
+        `
+          <h2>Reserva enviada para aprovação</h2>
+          <p>Olá ${novaReserva.locatario.nome},</p>
+          <p>Sua solicitação de reserva foi recebida e está aguardando aprovação do locador.</p>
+          <ul>
+            <li><strong>Quadra:</strong> ${novaReserva.quadra.nome} (${novaReserva.quadra.esporte})</li>
+            <li><strong>Data/Hora:</strong> ${formatarISOLocal(novaReserva.dataInicio)} até ${formatarISOLocal(novaReserva.dataFim)}</li>
+            <li><strong>Valor:</strong> R$ ${parseFloat(novaReserva.valorTotal).toFixed(2)}</li>
+          </ul>
+          <p>Você receberá uma notificação assim que o locador aprovar ou rejeitar sua solicitação.</p>
+        `
+      );
+
+      // Enviar email para o locador informando que há uma nova reserva para aprovar
+      await emailService.enviar(
+        novaReserva.quadra.locador.email,
+        `${novaReserva.quadra.nome} - Nova solicitação de reserva`,
+        `
+          <h2>Nova solicitação de reserva para aprovar</h2>
+          <p>Olá ${novaReserva.quadra.locador.nome},</p>
+          <p>O locatário <strong>${novaReserva.locatario.nome}</strong> solicitou uma reserva para sua quadra:</p>
+          <ul>
+            <li><strong>Quadra:</strong> ${novaReserva.quadra.nome}</li>
+            <li><strong>Data/Hora:</strong> ${formatarISOLocal(novaReserva.dataInicio)} até ${formatarISOLocal(novaReserva.dataFim)}</li>
+            <li><strong>Valor:</strong> R$ ${parseFloat(novaReserva.valorTotal).toFixed(2)}</li>
+            <li><strong>Locatário:</strong> ${novaReserva.locatario.nome} (${novaReserva.locatario.email})</li>
+          </ul>
+          <p>Por favor, aprove ou rejeite esta solicitação em seu painel.</p>
+        `
+      );
 
       res.status(201).json({
         mensagem: 'Reserva criada com sucesso! Aguardando aprovação do locador.',
@@ -230,15 +336,15 @@ const reservaController = {
     }
   },
 
-  // Atualizar status de reserva (apenas para locador aprovar/cancelar)
+  // Atualizar status de reserva (locador aprova/rejeita, locatário cancela)
   updateStatus: async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    const statusValidos = ['PENDENTE', 'AGUARDANDO_APROVACAO', 'CANCELADO', 'RESERVADO'];
+    const statusValidos = ['PENDENTE', 'AGUARDANDO_APROVACAO', 'CANCELADO', 'RESERVADO', 'EM_FILA', 'OFERECIDO_LOCATARIO'];
     if (!status || !statusValidos.includes(status)) {
       return res.status(400).json({ 
-        erro: 'Status inválido. Válidos: PENDENTE, AGUARDANDO_APROVACAO, CANCELADO, RESERVADO' 
+        erro: 'Status inválido. Válidos: PENDENTE, AGUARDANDO_APROVACAO, CANCELADO, RESERVADO, EM_FILA, OFERECIDO_LOCATARIO' 
       });
     }
 
@@ -248,26 +354,100 @@ const reservaController = {
         return res.status(404).json({ erro: 'Reserva não encontrada' });
       }
 
-      // Apenas locador da quadra pode atualizar status
-      if (req.user.tipo !== 'LOCADOR' || reserva.quadra.locadorId !== req.user.id) {
-        return res.status(403).json({ erro: 'Apenas o locador pode atualizar o status da reserva' });
+      // Verificar permissões baseado no status que quer atualizar
+      const isLocador = req.user.tipo === 'LOCADOR' && reserva.quadra.locadorId === req.user.id;
+      const isLocatario = req.user.tipo === 'LOCATARIO' && reserva.locatarioId === req.user.id;
+
+      // Locador pode atualizar para qualquer status
+      if (isLocador) {
+        const reservaAtualizada = await reservaModel.update(id, { status });
+
+        // Enviar email informando ao locatário
+        if (status === 'RESERVADO') {
+          await emailService.enviar(
+            reservaAtualizada.locatario.email,
+            `${reservaAtualizada.quadra.nome} - Sua reserva foi APROVADA! ✅`,
+            `
+              <h2>Sua reserva foi aprovada!</h2>
+              <p>Olá ${reservaAtualizada.locatario.nome},</p>
+              <p>Ótima notícia! O locador <strong>${reservaAtualizada.quadra.locador.nome}</strong> aprovou sua reserva!</p>
+              <ul>
+                <li><strong>Quadra:</strong> ${reservaAtualizada.quadra.nome}</li>
+                <li><strong>Data/Hora:</strong> ${formatarISOLocal(reservaAtualizada.dataInicio)} até ${formatarISOLocal(reservaAtualizada.dataFim)}</li>
+                <li><strong>Valor:</strong> R$ ${parseFloat(reservaAtualizada.valorTotal).toFixed(2)}</li>
+              </ul>
+              <p>Sua reserva está confirmada! Aproveite a quadra!</p>
+            `
+          );
+        } else if (status === 'CANCELADO') {
+          await emailService.enviar(
+            reservaAtualizada.locatario.email,
+            `${reservaAtualizada.quadra.nome} - Sua reserva foi REJEITADA ❌`,
+            `
+              <h2>Sua reserva foi rejeitada</h2>
+              <p>Olá ${reservaAtualizada.locatario.nome},</p>
+              <p>Infelizmente, o locador <strong>${reservaAtualizada.quadra.locador.nome}</strong> não aprovou sua reserva.</p>
+              <ul>
+                <li><strong>Quadra:</strong> ${reservaAtualizada.quadra.nome}</li>
+                <li><strong>Data/Hora:</strong> ${formatarISOLocal(reservaAtualizada.dataInicio)} até ${formatarISOLocal(reservaAtualizada.dataFim)}</li>
+              </ul>
+              <p>Você pode tentar agendar para outro horário.</p>
+            `
+          );
+        }
+
+        return res.json({
+          mensagem: 'Status da reserva atualizado com sucesso',
+          reserva: {
+            id: reservaAtualizada.id,
+            status: reservaAtualizada.status,
+            quadra: reservaAtualizada.quadra.nome,
+            locatario: reservaAtualizada.locatario.nome,
+            periodo: {
+              dataInicio: formatarISOLocal(reservaAtualizada.dataInicio),
+              dataFim: formatarISOLocal(reservaAtualizada.dataFim)
+            }
+          }
+        });
       }
 
-      const reservaAtualizada = await reservaModel.update(id, { status });
-
-      res.json({
-        mensagem: 'Status da reserva atualizado com sucesso',
-        reserva: {
-          id: reservaAtualizada.id,
-          status: reservaAtualizada.status,
-          quadra: reservaAtualizada.quadra.nome,
-          locatario: reservaAtualizada.locatario.nome,
-          periodo: {
-            dataInicio: reservaAtualizada.dataInicio,
-            dataFim: reservaAtualizada.dataFim
-          }
+      // Locatário só pode cancelar sua própria reserva
+      if (isLocatario && status === 'CANCELADO') {
+        if (reserva.status === 'CANCELADO') {
+          return res.status(400).json({ erro: 'Reserva já foi cancelada' });
         }
+
+        // Se é RESERVADO ou AGUARDANDO_APROVACAO, processar fila
+        if (['RESERVADO', 'AGUARDANDO_APROVACAO'].includes(reserva.status)) {
+          await filaService.processarProximaFila(
+            reserva.quadraId,
+            reserva.dataInicio,
+            reserva.dataFim
+          );
+        }
+
+        const reservaCancelada = await reservaModel.update(id, { status: 'CANCELADO' });
+
+        return res.json({
+          mensagem: 'Reserva cancelada com sucesso',
+          reserva: {
+            id: reservaCancelada.id,
+            status: reservaCancelada.status,
+            quadra: reservaCancelada.quadra.nome,
+            locatario: reservaCancelada.locatario.nome,
+            periodo: {
+              dataInicio: formatarISOLocal(reservaCancelada.dataInicio),
+              dataFim: formatarISOLocal(reservaCancelada.dataFim)
+            }
+          }
+        });
+      }
+
+      // Se chegou aqui, locatário tentou atualizar para status não permitido
+      return res.status(403).json({ 
+        erro: 'Locatário só pode cancelar (status=CANCELADO) sua própria reserva' 
       });
+
     } catch (error) {
       res.status(400).json({ erro: 'Erro ao atualizar status', detalhes: error.message });
     }
@@ -294,6 +474,25 @@ const reservaController = {
       // Validar se pode cancelar (não está cancelada)
       if (reserva.status === 'CANCELADO') {
         return res.status(400).json({ erro: 'Reserva já foi cancelada' });
+      }
+
+      // Se é RESERVADO ou AGUARDANDO_APROVACAO, processar fila
+      if (['RESERVADO', 'AGUARDANDO_APROVACAO'].includes(reserva.status)) {
+        console.log(`\n🔄 Processando fila para: ${reserva.quadraId} - ${reserva.dataInicio}`);
+        try {
+          const proximaFila = await filaService.processarProximaFila(
+            reserva.quadraId,
+            reserva.dataInicio,
+            reserva.dataFim
+          );
+          if (proximaFila) {
+            console.log(`✅ Próximo da fila ofertado: ${proximaFila.locatario.nome}`);
+          } else {
+            console.log(`ℹ️ Nenhuma fila para este horário`);
+          }
+        } catch (erroFila) {
+          console.error(`❌ Erro ao processar fila: ${erroFila.message}`);
+        }
       }
 
       const reservaCancelada = await reservaModel.update(id, { status: 'CANCELADO' });

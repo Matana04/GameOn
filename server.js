@@ -7,6 +7,8 @@ const usuarioRoutes = require('./src/routes/usuarioRoutes');
 const authRoutes = require('./src/routes/authRoutes');
 const quadraRoutes = require('./src/routes/quadraRoutes');
 const reservaRoutes = require('./src/routes/reservaRoutes');
+const filaRoutes = require('./src/routes/filaRoutes');
+const { iniciarCronJobs } = require('./src/utils/cronJobs');
 
 const app = express();
 app.use(express.json());
@@ -21,9 +23,13 @@ app.use('/', usuarioRoutes);
 app.use('/auth', authRoutes);
 app.use('/quadras', quadraRoutes);
 app.use('/reservas', reservaRoutes);
+app.use('/fila', filaRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`\n🚀 Servidor voando na porta http://localhost:${PORT}`);
   console.log(`🔗 Teste a rota principal em seu navegador!\n`);
+  
+  // Iniciar cron jobs para processar fila
+  iniciarCronJobs();
 });

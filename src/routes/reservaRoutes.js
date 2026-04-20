@@ -278,8 +278,8 @@ router.get('/:id', reservaController.getById);
  *   patch:
  *     summary: Atualizar status da reserva
  *     description: |
- *       Apenas locador pode atualizar status.
- *       Fluxo: AGUARDANDO_APROVACAO -> RESERVADO ou CANCELADO
+ *       Locador: pode atualizar para qualquer status (AGUARDANDO_APROVACAO, RESERVADO, CANCELADO, etc)
+ *       Locatário: pode apenas CANCELAR sua própria reserva
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -300,15 +300,15 @@ router.get('/:id', reservaController.getById);
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [PENDENTE, AGUARDANDO_APROVACAO, CANCELADO, RESERVADO]
+ *                 enum: [PENDENTE, AGUARDANDO_APROVACAO, CANCELADO, RESERVADO, EM_FILA, OFERECIDO_LOCATARIO]
  *                 description: Novo status da reserva
  *     responses:
  *       200:
  *         description: Status atualizado com sucesso
  *       400:
- *         description: Status inválido
+ *         description: Status inválido ou reserva já cancelada
  *       403:
- *         description: Apenas locador pode atualizar
+ *         description: Sem permissão (locatário só pode cancelar)
  *       404:
  *         description: Reserva não encontrada
  */
