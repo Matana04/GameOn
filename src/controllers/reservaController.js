@@ -547,6 +547,95 @@ const reservaController = {
     }
   },
 
+  // Listar clientes e histórico de reservas para uma quadra específica
+  getClientesByQuadra: async (req, res) => {
+    try {
+      if (req.user.tipo !== 'LOCADOR') {
+        return res.status(403).json({ erro: 'Apenas locadores podem acessar esse histórico' });
+      }
+
+      const { quadraId } = req.params;
+      const quadra = await quadraModel.findById(quadraId);
+      if (!quadra) {
+        return res.status(404).json({ erro: 'Quadra não encontrada' });
+      }
+
+      if (quadra.locadorId !== req.user.id) {
+        return res.status(403).json({ erro: 'Você não tem permissão para visualizar o histórico desta quadra' });
+      }
+
+      const reservas = await reservaModel.findClientesByQuadra(quadraId);
+      const totalGasto = reservas.reduce((sum, reserva) => sum + parseFloat(reserva.valorTotal), 0);
+      const totalClientes = new Set(reservas.map(r => r.locatarioId)).size;
+
+      res.json({
+        quadra: {
+          id: quadra.id,
+          nome: quadra.nome,
+          esporte: quadra.esporte,
+          valorPorHora: quadra.valorPorHora
+        },
+        totalReservas: reservas.length,
+        totalClientes,
+        totalGasto: parseFloat(totalGasto.toFixed(2)),
+        reservas: reservas.map(r => ({
+          id: r.id,
+          locatario: {
+            id: r.locatario.id,
+            nome: r.locatario.nome,
+            email: r.locatario.email
+          },
+          dataInicio: formatarISOLocal(r.dataInicio),
+          dataFim: formatarISOLocal(r.dataFim),
+          diaReserva: formatarISOLocal(r.dataInicio).split('T')[0],
+          valorTotal: r.valorTotal,
+          status: r.status
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar histórico de clientes da quadra', detalhes: error.message });
+    }
+  },
+
+  // Listar histórico de todos os clientes do locador autenticado
+  getHistoricoLocador: async (req, res) => {
+    try {
+      if (req.user.tipo !== 'LOCADOR') {
+        return res.status(403).json({ erro: 'Apenas locadores podem acessar esse histórico' });
+      }
+
+      const reservas = await reservaModel.findHistoricoByLocador(req.user.id);
+      const totalGasto = reservas.reduce((sum, reserva) => sum + parseFloat(reserva.valorTotal), 0);
+      const totalClientes = new Set(reservas.map(r => r.locatarioId)).size;
+
+      res.json({
+        totalReservas: reservas.length,
+        totalClientes,
+        totalGasto: parseFloat(totalGasto.toFixed(2)),
+        historico: reservas.map(r => ({
+          id: r.id,
+          quadra: {
+            id: r.quadra.id,
+            nome: r.quadra.nome,
+            esporte: r.quadra.esporte
+          },
+          locatario: {
+            id: r.locatario.id,
+            nome: r.locatario.nome,
+            email: r.locatario.email
+          },
+          dataInicio: formatarISOLocal(r.dataInicio),
+          dataFim: formatarISOLocal(r.dataFim),
+          diaReserva: formatarISOLocal(r.dataInicio).split('T')[0],
+          valorTotal: r.valorTotal,
+          status: r.status
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar histórico do locador', detalhes: error.message });
+    }
+  },
+
   // Timer da próxima reserva do locatário (melhor prática: usa token)
   proximaReserva: async (req, res) => {
     try {

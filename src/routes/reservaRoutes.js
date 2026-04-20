@@ -401,6 +401,59 @@ router.get('/locador/dia', reservaController.getReservasLocadorDia);
 
 /**
  * @swagger
+ * /reservas/quadra/{quadraId}/clientes:
+ *   get:
+ *     summary: Listar clientes que já reservaram uma quadra
+ *     description: |
+ *       Lista todas as reservas de uma quadra específica e informa os dados do locatário,
+ *       valor gasto e dia da reserva.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: quadraId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da quadra
+ *     responses:
+ *       200:
+ *         description: Histórico de clientes da quadra
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       403:
+ *         description: Acesso negado para locadores que não são proprietários desta quadra
+ *       404:
+ *         description: Quadra não encontrada
+ */
+router.get('/quadra/:quadraId/clientes', reservaController.getClientesByQuadra);
+
+/**
+ * @swagger
+ * /reservas/locador/historico:
+ *   get:
+ *     summary: Histórico de todos os clientes do locador
+ *     description: |
+ *       Busca todas as reservas de todas as quadras do locador autenticado,
+ *       incluindo dados do locatário, valor gasto e dia da reserva.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Histórico de clientes para o locador autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       403:
+ *         description: Apenas locadores podem acessar esse histórico
+ */
+router.get('/locador/historico', reservaController.getHistoricoLocador);
+
+/**
+ * @swagger
  * /reservas/quadra/{quadraId}:
  *   get:
  *     summary: Listar todas as reservas de uma quadra

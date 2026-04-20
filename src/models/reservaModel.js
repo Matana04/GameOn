@@ -39,6 +39,32 @@ const reservaModel = {
     }
   }),
 
+  // Buscar clientes que já fizeram reservas em uma quadra
+  findClientesByQuadra: async (quadraId) => prisma.reserva.findMany({
+    where: {
+      quadraId: Number(quadraId),
+      status: { not: 'EM_FILA' }
+    },
+    include: {
+      quadra: true,
+      locatario: true
+    },
+    orderBy: { dataInicio: 'desc' }
+  }),
+
+  // Buscar histórico de reservas dos quadras de um locador
+  findHistoricoByLocador: async (locadorId) => prisma.reserva.findMany({
+    where: {
+      quadra: { locadorId: Number(locadorId) },
+      status: { not: 'EM_FILA' }
+    },
+    include: {
+      quadra: true,
+      locatario: true
+    },
+    orderBy: { dataInicio: 'desc' }
+  }),
+
   // Buscar reservas do locatário
   findByLocatario: async (locatarioId) => prisma.reserva.findMany({
     where: { locatarioId: Number(locatarioId) },
