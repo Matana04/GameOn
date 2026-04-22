@@ -125,16 +125,30 @@ router.post('/', requireLocador, quadraController.create);
  * @swagger
  * /quadras/horarios-disponiveis:
  *   get:
- *     summary: Lista todas as quadras com horários disponíveis de forma legível
+ *     summary: Lista os horários disponíveis das quadras para uma data específica
  *     description: |
- *       Retorna todas as quadras formatadas com seus horários de funcionamento.
- *       Exemplo de resposta:
- *       "Quadra Central está liberada quarta-feira das 18 às 22"
+ *       Retorna todos os slots de 1 hora disponíveis para cada quadra na data informada,
+ *       excluindo os horários já reservados (status RESERVADO ou AGUARDANDO_APROVACAO).
+ *       O parâmetro `data` é obrigatório no formato YYYY-MM-DD.
+ *       Opcionalmente, filtre por `quadraId` para consultar uma quadra específica.
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: data
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: '2025-04-22'
+ *         description: Data para consulta (formato YYYY-MM-DD)
+ *       - in: query
+ *         name: quadraId
+ *         schema:
+ *           type: integer
+ *         description: ID da quadra (opcional, retorna todas se omitido)
  *     responses:
  *       200:
- *         description: Lista de quadras com horários formatados
+ *         description: Lista de quadras com horários disponíveis na data informada
  *         content:
  *           application/json:
  *             schema:
@@ -152,23 +166,34 @@ router.post('/', requireLocador, quadraController.create);
  *                     type: number
  *                   locador:
  *                     type: string
- *                   horarios:
+ *                   data:
+ *                     type: string
+ *                     example: '2025-04-22'
+ *                   diaSemana:
+ *                     type: string
+ *                     example: 'terça-feira'
+ *                   aberto:
+ *                     type: boolean
+ *                     description: false se a quadra não funciona neste dia da semana
+ *                   horaAbertura:
+ *                     type: string
+ *                     example: '08:00'
+ *                   horaFechamento:
+ *                     type: string
+ *                     example: '22:00'
+ *                   horariosDisponiveis:
  *                     type: array
  *                     items:
  *                       type: object
  *                       properties:
- *                         dia:
+ *                         inicio:
  *                           type: string
- *                         abertura:
+ *                           example: '08:00'
+ *                         fim:
  *                           type: string
- *                         fechamento:
- *                           type: string
- *                         descricao:
- *                           type: string
- *                   resumo:
- *                     type: array
- *                     items:
- *                       type: string
+ *                           example: '09:00'
+ *       400:
+ *         description: Parâmetro data ausente ou com formato inválido
  *       500:
  *         description: Erro interno do servidor
  */

@@ -165,19 +165,69 @@ const quadraController = {
   },
 
   listWithHorarios: async (req, res) => {
+    const { data, quadraId } = req.query;
+
+    if (!data) {
+      return res.status(400).json({ erro: 'Parâmetro obrigatório: data (formato YYYY-MM-DD)' });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+      return res.status(400).json({ erro: 'Formato de data inválido. Use YYYY-MM-DD' });
+    }
+
     try {
-      const quadras = await quadraModel.findAll();
-      
-      const quadrasFormatadas = quadras.map(quadra => {
-        const horariosFormatados = quadra.horarios.map(horario => {
-          const nomeDia = obterNomeDia(horario.diaSemana);
+      const [year, month, day] = data.split('-').map(Number);
+
+      // Dia da semana para a data local (0=domingo, 6=sábado)
+      const diaSemana = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+      // Limites do dia em UTC (UTC-3 → UTC: +3h)
+      const inicioDiaUTC = new Date(Date.UTC(year, month - 1, day, 3, 0, 0));
+      const fimDiaUTC = new Date(Date.UTC(year, month - 1, day + 1, 3, 0, 0));
+
+      const where = {};
+      if (quadraId) where.id = Number(quadraId);
+
+      const quadras = await prisma.quadra.findMany({
+        where,
+        include: {
+          horarios: true,
+          locador: { select: { id: true, nome: true } },
+          reservas: {
+            where: {
+              status: { in: ['RESERVADO', 'AGUARDANDO_APROVACAO'] },
+              dataInicio: { lt: fimDiaUTC },
+              dataFim: { gt: inicioDiaUTC }
+            }
+          }
+        }
+      });
+
+      const resultado = quadras.map(quadra => {
+        const horarioDia = quadra.horarios.find(h => h.diaSemana === diaSemana);
+
+        if (!horarioDia) {
           return {
-            dia: nomeDia,
-            diaSemana: horario.diaSemana,
-            abertura: horario.horaAbertura,
-            fechamento: horario.horaFechamento,
-            descricao: `${quadra.nome} está liberada ${nomeDia} das ${horario.horaAbertura} às ${horario.horaFechamento}`
+            id: quadra.id,
+            nome: quadra.nome,
+            esporte: quadra.esporte,
+            valorPorHora: quadra.valorPorHora,
+            locador: quadra.locador.nome,
+            data,
+            diaSemana: obterNomeDia(diaSemana),
+            aberto: false,
+            horariosDisponiveis: []
           };
+        }
+
+        const slots = gerarSlots(horarioDia.horaAbertura, horarioDia.horaFechamento);
+
+        const horariosDisponiveis = slots.filter(slot => {
+          const [siH, siM] = slot.inicio.split(':').map(Number);
+          const [sfH, sfM] = slot.fim.split(':').map(Number);
+          const slotInicioUTC = new Date(Date.UTC(year, month - 1, day, siH + 3, siM, 0));
+          const slotFimUTC = new Date(Date.UTC(year, month - 1, day, sfH + 3, sfM, 0));
+          return !quadra.reservas.some(r => r.dataInicio < slotFimUTC && r.dataFim > slotInicioUTC);
         });
 
         return {
@@ -185,16 +235,19 @@ const quadraController = {
           nome: quadra.nome,
           esporte: quadra.esporte,
           valorPorHora: quadra.valorPorHora,
-          descricao: quadra.descricao,
           locador: quadra.locador.nome,
-          horarios: horariosFormatados,
-          resumo: horariosFormatados.map(h => h.descricao)
+          data,
+          diaSemana: obterNomeDia(diaSemana),
+          aberto: true,
+          horaAbertura: horarioDia.horaAbertura,
+          horaFechamento: horarioDia.horaFechamento,
+          horariosDisponiveis
         };
       });
 
-      res.json(quadrasFormatadas);
+      res.json(resultado);
     } catch (error) {
-      res.status(500).json({ erro: 'Erro ao buscar quadras', detalhes: error.message });
+      res.status(500).json({ erro: 'Erro ao buscar horários disponíveis', detalhes: error.message });
     }
   },
 
@@ -319,6 +372,27 @@ const quadraController = {
 function obterNomeDia(dia) {
   const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
   return dias[dia];
+}
+
+function gerarSlots(horaAbertura, horaFechamento) {
+  const [abH, abM] = horaAbertura.split(':').map(Number);
+  const [fhH, fhM] = horaFechamento.split(':').map(Number);
+  const slots = [];
+  let h = abH, m = abM;
+
+  while (true) {
+    const nextH = h + 1;
+    const nextM = m;
+    if (nextH > fhH || (nextH === fhH && nextM > fhM)) break;
+    slots.push({
+      inicio: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+      fim: `${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`
+    });
+    h = nextH;
+    m = nextM;
+  }
+
+  return slots;
 }
 
 module.exports = quadraController;

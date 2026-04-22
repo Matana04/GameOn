@@ -5,6 +5,13 @@ const prisma = require('../database/prismaClient');
 const { converterParaUTC, formatarISOLocal } = require('../utils/dateUtils');
 const filaService = require('../services/filaService');
 
+// Parseia uma string de data assumindo UTC-3 quando não há timezone explícito,
+// evitando dupla conversão quando o servidor já roda em UTC-3.
+function parseDateUTC3(s) {
+  const hasTZ = s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s);
+  return new Date(hasTZ ? s : s + '-03:00');
+}
+
 const reservaController = {
   // Listar todas as reservas do usuário autenticado
   list: async (req, res) => {
@@ -105,9 +112,9 @@ const reservaController = {
     }
 
     try {
-      // Converter datas de hora local para UTC
-      const dataInicioObj = converterParaUTC(dataInicio);
-      const dataFimObj = converterParaUTC(dataFim);
+      // Parsear datas assumindo UTC-3 quando não há timezone explícito na string
+      const dataInicioObj = parseDateUTC3(dataInicio);
+      const dataFimObj = parseDateUTC3(dataFim);
 
       // Validar formato de data
       if (isNaN(dataInicioObj.getTime()) || isNaN(dataFimObj.getTime())) {
@@ -239,7 +246,7 @@ const reservaController = {
             dataInicio: dataInicioObj,
             dataFim: dataFimObj,
             valorTotal: parseFloat(valorTotal.toFixed(2)),
-            status: 'AGUARDANDO_APROVACAO',
+            status: 'RESERVADO',
             timezoneOffset: -180 // UTC-3
           },
           include: {
