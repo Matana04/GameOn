@@ -56,6 +56,7 @@ model Quadra {
   locador      Usuario   @relation(fields: [locadorId], references: [id])
   horarios     Horario[]
   reservas     Reserva[]
+  bloqueios    BloqueioQuadra[]
   quadraEsportes QuadraEsporte[]
 }
 
@@ -84,6 +85,25 @@ model Horario {
   diaSemana      Int
   horaAbertura   String
   horaFechamento String
+}
+
+// Tabela de Bloqueios de Quadra (dias/horários que a quadra não funcionará)
+model BloqueioQuadra {
+  id            Int       @id @default(autoincrement())
+  quadraId      Int
+  quadra        Quadra    @relation(fields: [quadraId], references: [id], onDelete: Cascade)
+  dataInicio    DateTime  @db.DateTime(6)
+  dataFim       DateTime  @db.DateTime(6)
+  motivo        String    @db.VarChar(200) // ex: "Feriado", "Manutenção", "Limpeza"
+  descricao     String?   @db.Text
+  horaInicio    String?   // HH:mm - Hora inicial do bloqueio no dia (se nulo, bloqueia todo o dia)
+  horaFim       String?   // HH:mm - Hora final do bloqueio no dia (se nulo, bloqueia todo o dia)
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  @@index([quadraId])
+  @@index([dataInicio])
+  @@index([dataFim])
 }
 
 // Tabela de Reservas (Aluguéis)
