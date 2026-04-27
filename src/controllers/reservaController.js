@@ -411,19 +411,13 @@ const reservaController = {
             `
           );
         } else if (status === 'CANCELADO') {
-          emailService.enviar(
-            reservaAtualizada.locatario.email,
-            `${reservaAtualizada.quadra.nome} - Sua reserva foi REJEITADA ❌`,
-            `
-              <h2>Sua reserva foi rejeitada</h2>
-              <p>Olá ${reservaAtualizada.locatario.nome},</p>
-              <p>Infelizmente, o locador <strong>${reservaAtualizada.quadra.locador.nome}</strong> não aprovou sua reserva.</p>
-              <ul>
-                <li><strong>Quadra:</strong> ${reservaAtualizada.quadra.nome}</li>
-                <li><strong>Data/Hora:</strong> ${formatarISOLocal(reservaAtualizada.dataInicio)} até ${formatarISOLocal(reservaAtualizada.dataFim)}</li>
-              </ul>
-              <p>Você pode tentar agendar para outro horário.</p>
-            `
+          // Locador cancelando reserva - enviar email ao locatário
+          const motivo = req.body?.motivo || '';
+          emailService.notificarCancelamentoPorLocador(
+            reservaAtualizada.locatario,
+            reservaAtualizada.quadra,
+            reservaAtualizada,
+            motivo
           );
         }
 
@@ -458,6 +452,16 @@ const reservaController = {
         }
 
         const reservaCancelada = await reservaModel.update(id, { status: 'CANCELADO' });
+
+        // Enviar notificação de cancelamento por email (locatário cancelando)
+        const motivo = req.body?.motivo || '';
+        emailService.notificarCancelamentoPorLocatario(
+          reservaCancelada.quadra.locador,
+          reservaCancelada.quadra,
+          reservaCancelada,
+          reservaCancelada.locatario,
+          motivo
+        );
 
         return res.json({
           mensagem: 'Reserva cancelada com sucesso',
@@ -527,6 +531,29 @@ const reservaController = {
       }
 
       const reservaCancelada = await reservaModel.update(id, { status: 'CANCELADO' });
+
+      // Enviar notificação de cancelamento por email
+      const isLocadorCancelando = req.user.tipo === 'LOCADOR';
+      const motivo = req.body?.motivo || '';
+      
+      if (isLocadorCancelando) {
+        // Locador cancelou - notificar locatário
+        emailService.notificarCancelamentoPorLocador(
+          reservaCancelada.locatario,
+          reservaCancelada.quadra,
+          reservaCancelada,
+          motivo
+        );
+      } else {
+        // Locatário cancelou - notificar locador
+        emailService.notificarCancelamentoPorLocatario(
+          reservaCancelada.quadra.locador,
+          reservaCancelada.quadra,
+          reservaCancelada,
+          reservaCancelada.locatario,
+          motivo
+        );
+      }
 
       res.json({
         mensagem: 'Reserva cancelada com sucesso',

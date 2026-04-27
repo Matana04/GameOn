@@ -69,6 +69,11 @@ model Reserva {
   dataOferta  DateTime?     // Data/hora quando foi ofertado ao locatário
   codigoSeguranca String?   // Código de segurança alfanumérico (4 dígitos) para verificação
   createdAt   DateTime      @default(now()) // Para ordenar FIFO
+  // Rastreamento de lembretes enviados
+  lembreteUmDiaEnviado   Boolean @default(false)  // 1 dia antes
+  lembrete6HorasEnviado  Boolean @default(false)  // 6 horas antes
+  lembrete3HorasEnviado  Boolean @default(false)  // 3 horas antes
+  lembrete1HoraEnviado   Boolean @default(false)  // 1 hora antes
 }
 
 enum StatusReserva {
