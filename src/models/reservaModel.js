@@ -52,6 +52,17 @@ const reservaModel = {
     orderBy: { dataInicio: 'desc' }
   }),
 
+  // Buscar clientes únicos de todas as quadras de um locador
+  findClientesByLocador: async (locadorId) => prisma.reserva.findMany({
+    where: {
+      quadra: { locadorId: Number(locadorId) },
+      status: { not: 'EM_FILA' }
+    },
+    include: { locatario: true },
+    distinct: ['locatarioId'],
+    orderBy: { dataInicio: 'desc' }
+  }),
+
   // Buscar histórico de reservas dos quadras de um locador
   findHistoricoByLocador: async (locadorId) => prisma.reserva.findMany({
     where: {

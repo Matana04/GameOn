@@ -1,6 +1,6 @@
 const express = require('express');
 const reservaController = require('../controllers/reservaController');
-const { requireAuth } = require('../middleware/authMiddleware');
+const { requireAuth, requireLocador } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -398,6 +398,8 @@ router.delete('/:id/cancelar', reservaController.cancel);
  *         description: Erro interno do servidor
  */
 router.get('/locador/dia', reservaController.getReservasLocadorDia);
+router.post('/locador/bloquear', requireLocador, reservaController.bloquearHorario);
+router.delete('/locador/bloquear/:id', requireLocador, reservaController.desbloquearHorario);
 
 /**
  * @swagger
@@ -451,6 +453,7 @@ router.get('/quadra/:quadraId/clientes', reservaController.getClientesByQuadra);
  *         description: Apenas locadores podem acessar esse histórico
  */
 router.get('/locador/historico', reservaController.getHistoricoLocador);
+router.get('/locador/:locadorId/clientes', reservaController.getClientesByLocador);
 
 /**
  * @swagger

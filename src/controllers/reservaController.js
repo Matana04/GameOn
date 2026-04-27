@@ -257,7 +257,7 @@ const reservaController = {
       });
 
       // Enviar email para o locatário confirmando que a reserva foi solicitada
-      await emailService.enviar(
+      emailService.enviar(
         novaReserva.locatario.email,
         `${novaReserva.quadra.nome} - Sua reserva foi enviada para aprovação`,
         `
@@ -274,7 +274,7 @@ const reservaController = {
       );
 
       // Enviar email para o locador informando que há uma nova reserva para aprovar
-      await emailService.enviar(
+      emailService.enviar(
         novaReserva.quadra.locador.email,
         `${novaReserva.quadra.nome} - Nova solicitação de reserva`,
         `
@@ -371,7 +371,7 @@ const reservaController = {
 
         // Enviar email informando ao locatário
         if (status === 'RESERVADO') {
-          await emailService.enviar(
+          emailService.enviar(
             reservaAtualizada.locatario.email,
             `${reservaAtualizada.quadra.nome} - Sua reserva foi APROVADA! ✅`,
             `
@@ -387,7 +387,7 @@ const reservaController = {
             `
           );
         } else if (status === 'CANCELADO') {
-          await emailService.enviar(
+          emailService.enviar(
             reservaAtualizada.locatario.email,
             `${reservaAtualizada.quadra.nome} - Sua reserva foi REJEITADA ❌`,
             `
@@ -601,6 +601,33 @@ const reservaController = {
       });
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar histórico de clientes da quadra', detalhes: error.message });
+    }
+  },
+
+  // Listar clientes únicos de todas as quadras de um locador
+  getClientesByLocador: async (req, res) => {
+    try {
+      if (req.user.tipo !== 'LOCADOR') {
+        return res.status(403).json({ erro: 'Apenas locadores podem acessar esse recurso' });
+      }
+
+      const { locadorId } = req.params;
+
+      if (Number(locadorId) !== req.user.id) {
+        return res.status(403).json({ erro: 'Você não tem permissão para acessar os clientes de outro locador' });
+      }
+
+      const reservas = await reservaModel.findClientesByLocador(locadorId);
+
+      const clientes = reservas.map(r => ({
+        id: r.locatario.id,
+        nome: r.locatario.nome,
+        email: r.locatario.email,
+      }));
+
+      res.json({ clientes });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar clientes do locador', detalhes: error.message });
     }
   },
 
@@ -959,7 +986,86 @@ const reservaController = {
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar reservas do dia', detalhes: error.message });
     }
-  }
+  },
+
+  // Bloquear um horário em uma quadra do locador (manutenção / evento)
+  bloquearHorario: async (req, res) => {
+    const { quadraId, dataInicio, dataFim, motivo } = req.body;
+    const locadorId = req.user.id;
+
+    if (!quadraId || !dataInicio || !dataFim) {
+      return res.status(400).json({ erro: 'Campos obrigatórios: quadraId, dataInicio, dataFim' });
+    }
+
+    try {
+      const quadra = await quadraModel.findById(quadraId);
+      if (!quadra) return res.status(404).json({ erro: 'Quadra não encontrada' });
+      if (quadra.locadorId !== locadorId) {
+        return res.status(403).json({ erro: 'Você não tem permissão para bloquear esta quadra' });
+      }
+
+      const dataInicioObj = parseDateUTC3(dataInicio);
+      const dataFimObj = parseDateUTC3(dataFim);
+
+      if (isNaN(dataInicioObj.getTime()) || isNaN(dataFimObj.getTime())) {
+        return res.status(400).json({ erro: 'Formato de data inválido' });
+      }
+      if (dataInicioObj >= dataFimObj) {
+        return res.status(400).json({ erro: 'dataInicio deve ser anterior a dataFim' });
+      }
+
+      const bloqueio = await prisma.reserva.create({
+        data: {
+          quadraId: Number(quadraId),
+          locatarioId: locadorId, // locador usa o próprio ID como placeholder
+          dataInicio: dataInicioObj,
+          dataFim: dataFimObj,
+          valorTotal: 0,
+          status: 'BLOQUEADO',
+          timezoneOffset: -180,
+        },
+      });
+
+      return res.status(201).json({
+        mensagem: motivo ? `Horário bloqueado: ${motivo}` : 'Horário bloqueado com sucesso.',
+        bloqueio: {
+          id: bloqueio.id,
+          quadraId: bloqueio.quadraId,
+          periodo: {
+            dataInicio: formatarISOLocal(bloqueio.dataInicio),
+            dataFim: formatarISOLocal(bloqueio.dataFim),
+          },
+          motivo: motivo ?? null,
+          status: bloqueio.status,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao bloquear horário', detalhes: error.message });
+    }
+  },
+
+  // Desbloquear / remover um bloqueio criado pelo locador
+  desbloquearHorario: async (req, res) => {
+    const { id } = req.params;
+    const locadorId = req.user.id;
+
+    try {
+      const reserva = await reservaModel.findById(id);
+      if (!reserva) return res.status(404).json({ erro: 'Bloqueio não encontrado' });
+      if (reserva.status !== 'BLOQUEADO') {
+        return res.status(400).json({ erro: 'Esta entrada não é um bloqueio' });
+      }
+      if (reserva.quadra.locadorId !== locadorId) {
+        return res.status(403).json({ erro: 'Você não tem permissão para remover este bloqueio' });
+      }
+
+      await prisma.reserva.delete({ where: { id: Number(id) } });
+
+      return res.json({ mensagem: 'Bloqueio removido com sucesso.' });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao remover bloqueio', detalhes: error.message });
+    }
+  },
 };
 
 /**

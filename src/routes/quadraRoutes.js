@@ -201,120 +201,6 @@ router.get('/horarios-disponiveis', quadraController.listWithHorarios);
 
 /**
  * @swagger
- * /quadras/{id}:
- *   get:
- *     summary: Busca uma quadra por ID
- *     description: Retorna os detalhes de uma quadra específica
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID da quadra
- *     responses:
- *       200:
- *         description: Detalhes da quadra
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Quadra'
- *       404:
- *         description: Quadra não encontrada
- *       500:
- *         description: Erro interno do servidor
- */
-router.get('/:id', quadraController.getById);
-
-/**
- * @swagger
- * /quadras/{id}:
- *   put:
- *     summary: Atualiza uma quadra
- *     description: Atualiza os dados de uma quadra existente, incluindo horários
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID da quadra
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               nome:
- *                 type: string
- *               esporte:
- *                 type: string
- *               valorPorHora:
- *                 type: number
- *                 format: float
- *               descricao:
- *                 type: string
- *               horarios:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     diaSemana:
- *                       type: integer
- *                       minimum: 0
- *                       maximum: 6
- *                     horaAbertura:
- *                       type: string
- *                     horaFechamento:
- *                       type: string
- *     responses:
- *       200:
- *         description: Quadra atualizada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Quadra'
- *       404:
- *         description: Quadra não encontrada
- *       400:
- *         description: Dados inválidos
- *       500:
- *         description: Erro interno do servidor
- */
-router.put('/:id', requireLocador, quadraController.update);
-
-/**
- * @swagger
- * /quadras/{id}:
- *   delete:
- *     summary: Deleta uma quadra
- *     description: Remove uma quadra do sistema
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID da quadra
- *     responses:
- *       200:
- *         description: Quadra deletada com sucesso
- *       404:
- *         description: Quadra não encontrada
- *       500:
- *         description: Erro interno do servidor
- */
-router.delete('/:id', requireLocador, quadraController.delete);
-
-/**
- * @swagger
  * /quadras/filtrar:
  *   get:
  *     summary: Filtrar quadras por critérios
@@ -431,5 +317,119 @@ router.delete('/:id', requireLocador, quadraController.delete);
  *         description: Erro interno do servidor
  */
 router.get('/filtrar', quadraController.filtrar);
+
+/**
+ * @swagger
+ * /quadras/{id}:
+ *   get:
+ *     summary: Busca uma quadra por ID
+ *     description: Retorna os detalhes de uma quadra específica
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da quadra
+ *     responses:
+ *       200:
+ *         description: Detalhes da quadra
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Quadra'
+ *       404:
+ *         description: Quadra não encontrada
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get('/:id', quadraController.getById);
+
+/**
+ * @swagger
+ * /quadras/{id}:
+ *   put:
+ *     summary: Atualiza uma quadra
+ *     description: Atualiza os dados de uma quadra existente, incluindo horários
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da quadra
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nome:
+ *                 type: string
+ *               esporte:
+ *                 type: string
+ *               valorPorHora:
+ *                 type: number
+ *                 format: float
+ *               descricao:
+ *                 type: string
+ *               horarios:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     diaSemana:
+ *                       type: integer
+ *                       minimum: 0
+ *                       maximum: 6
+ *                     horaAbertura:
+ *                       type: string
+ *                     horaFechamento:
+ *                       type: string
+ *     responses:
+ *       200:
+ *         description: Quadra atualizada com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Quadra'
+ *       404:
+ *         description: Quadra não encontrada
+ *       400:
+ *         description: Dados inválidos
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.put('/:id', requireLocador, quadraController.update);
+
+/**
+ * @swagger
+ * /quadras/{id}:
+ *   delete:
+ *     summary: Deleta uma quadra
+ *     description: Remove uma quadra do sistema
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da quadra
+ *     responses:
+ *       200:
+ *         description: Quadra deletada com sucesso
+ *       404:
+ *         description: Quadra não encontrada
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.delete('/:id', requireLocador, quadraController.delete);
 
 module.exports = router;
