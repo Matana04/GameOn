@@ -2,6 +2,26 @@ const quadraModel = require('../models/quadraModel');
 const reservaModel = require('../models/reservaModel');
 const prisma = require('../database/prismaClient');
 
+function mapQuadraResponse(quadra) {
+  if (!quadra) return quadra;
+
+  return {
+    ...quadra,
+    imagemBlob: quadra.imagemBlob ? Buffer.from(quadra.imagemBlob).toString('base64') : null,
+  };
+}
+
+function decodeBase64Image(base64Value) {
+  if (base64Value === undefined) return undefined;
+  if (base64Value === null || base64Value === '') return null;
+
+  try {
+    return Buffer.from(String(base64Value), 'base64');
+  } catch (_error) {
+    return 'INVALID_BASE64';
+  }
+}
+
 const quadraController = {
   list: async (req, res) => {
     try {
@@ -19,18 +39,35 @@ const quadraController = {
       }
 
       const quadras = await prisma.quadra.findMany({ where, include: { horarios: true } });
-      res.json(quadras);
+      res.json(quadras.map(mapQuadraResponse));
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar quadras', detalhes: error.message });
     }
   },
 
   create: async (req, res) => {
-    const { nome, esporte, valorPorHora, descricao, endereco, cidade, estado, cep, horarios } = req.body;
+    const {
+      nome,
+      esporte,
+      valorPorHora,
+      descricao,
+      endereco,
+      cidade,
+      estado,
+      cep,
+      horarios,
+      imagemBlob,
+      imagemMimeType,
+    } = req.body;
     const locadorId = req.user.id;
 
     if (!nome || !esporte || !valorPorHora || !horarios || !Array.isArray(horarios)) {
       return res.status(400).json({ erro: 'Campos obrigatórios: nome, esporte, valorPorHora, horarios (array)' });
+    }
+
+    let imagemBuffer = decodeBase64Image(imagemBlob);
+    if (imagemBuffer === 'INVALID_BASE64') {
+      imagemBuffer = null;
     }
 
     try {
@@ -41,6 +78,8 @@ const quadraController = {
             esporte, 
             valorPorHora: parseFloat(valorPorHora), 
             descricao, 
+            imagemBlob: imagemBuffer === undefined ? null : imagemBuffer,
+            imagemMimeType: imagemBuffer ? (imagemMimeType || 'application/octet-stream') : null,
             endereco,
             cidade,
             estado,
@@ -63,7 +102,7 @@ const quadraController = {
         return { ...quadra, horarios: horariosCriados };
       }, { timeout: 10000 });
 
-      res.status(201).json(novaQuadra);
+      res.status(201).json(mapQuadraResponse(novaQuadra));
     } catch (error) {
       res.status(400).json({ erro: 'Erro ao criar quadra', detalhes: error.message });
     }
@@ -77,7 +116,7 @@ const quadraController = {
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
-      res.json(quadra);
+      res.json(mapQuadraResponse(quadra));
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar quadra', detalhes: error.message });
     }
@@ -85,7 +124,19 @@ const quadraController = {
 
   update: async (req, res) => {
     const { id } = req.params;
-    const { nome, esporte, valorPorHora, descricao, endereco, cidade, estado, cep, horarios } = req.body;
+    const {
+      nome,
+      esporte,
+      valorPorHora,
+      descricao,
+      endereco,
+      cidade,
+      estado,
+      cep,
+      horarios,
+      imagemBlob,
+      imagemMimeType,
+    } = req.body;
 
     try {
       const quadraExistente = await quadraModel.findById(id);
@@ -106,6 +157,16 @@ const quadraController = {
       if (cidade !== undefined) updateData.cidade = cidade;
       if (estado !== undefined) updateData.estado = estado;
       if (cep !== undefined) updateData.cep = cep;
+
+      let imagemBuffer = decodeBase64Image(imagemBlob);
+      if (imagemBuffer === 'INVALID_BASE64') {
+        imagemBuffer = null;
+      }
+
+      if (imagemBuffer !== undefined) {
+        updateData.imagemBlob = imagemBuffer;
+        updateData.imagemMimeType = imagemBuffer ? (imagemMimeType || 'application/octet-stream') : null;
+      }
 
       let quadraAtualizada;
       if (horarios && Array.isArray(horarios)) {
@@ -138,7 +199,7 @@ const quadraController = {
         quadraAtualizada = await quadraModel.update(id, updateData);
       }
 
-      res.json(quadraAtualizada);
+      res.json(mapQuadraResponse(quadraAtualizada));
     } catch (error) {
       res.status(400).json({ erro: 'Erro ao atualizar quadra', detalhes: error.message });
     }
@@ -204,14 +265,16 @@ const quadraController = {
       });
 
       const resultado = quadras.map(quadra => {
+        const quadraBase = mapQuadraResponse(quadra);
         const horarioDia = quadra.horarios.find(h => h.diaSemana === diaSemana);
 
         if (!horarioDia) {
           return {
-            id: quadra.id,
-            nome: quadra.nome,
-            esporte: quadra.esporte,
-            valorPorHora: quadra.valorPorHora,
+            id: quadraBase.id,
+            nome: quadraBase.nome,
+            esporte: quadraBase.esporte,
+            valorPorHora: quadraBase.valorPorHora,
+            imagemBlob: quadraBase.imagemBlob,
             locador: quadra.locador.nome,
             data,
             diaSemana: obterNomeDia(diaSemana),
@@ -231,10 +294,11 @@ const quadraController = {
         });
 
         return {
-          id: quadra.id,
-          nome: quadra.nome,
-          esporte: quadra.esporte,
-          valorPorHora: quadra.valorPorHora,
+          id: quadraBase.id,
+          nome: quadraBase.nome,
+          esporte: quadraBase.esporte,
+          valorPorHora: quadraBase.valorPorHora,
+          imagemBlob: quadraBase.imagemBlob,
           locador: quadra.locador.nome,
           data,
           diaSemana: obterNomeDia(diaSemana),
@@ -336,16 +400,20 @@ const quadraController = {
       }
 
       // Formatar resposta
-      const quadrasFormatadas = quadras.map(quadra => ({
-        id: quadra.id,
-        nome: quadra.nome,
-        esporte: quadra.esporte,
-        valorPorHora: quadra.valorPorHora,
-        descricao: quadra.descricao,
-        endereco: quadra.endereco,
-        cidade: quadra.cidade,
-        estado: quadra.estado,
-        cep: quadra.cep,
+      const quadrasFormatadas = quadras.map(quadra => {
+        const quadraBase = mapQuadraResponse(quadra);
+
+        return {
+        id: quadraBase.id,
+        nome: quadraBase.nome,
+        esporte: quadraBase.esporte,
+        valorPorHora: quadraBase.valorPorHora,
+        descricao: quadraBase.descricao,
+        imagemBlob: quadraBase.imagemBlob,
+        endereco: quadraBase.endereco,
+        cidade: quadraBase.cidade,
+        estado: quadraBase.estado,
+        cep: quadraBase.cep,
         locador: quadra.locador,
         horarios: quadra.horarios.map(h => ({
           diaSemana: h.diaSemana,
@@ -356,7 +424,7 @@ const quadraController = {
         disponivel: quadra.disponivel,
         periodo: quadra.periodo,
         conflitos: quadra.conflitos || 0
-      }));
+      }});
 
       res.json({
         total: quadrasFormatadas.length,

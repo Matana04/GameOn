@@ -31,6 +31,8 @@ model Quadra {
   esporte      String
   valorPorHora Decimal   @db.Decimal(10, 2)
   descricao    String?   @db.Text
+  imagemBlob   Bytes?    @db.LongBlob
+  imagemMimeType String? @db.VarChar(100)
   endereco     String?   // Endereço completo da quadra
   cidade       String?   // Cidade onde fica a quadra
   estado       String?   // Estado (UF)

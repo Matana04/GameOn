@@ -74,6 +74,17 @@ const swaggerDefinition = {
             type: 'string',
             description: 'Descrição da quadra',
           },
+          imagemBlob: {
+            type: 'string',
+            format: 'byte',
+            nullable: true,
+            description: 'Imagem da quadra em base64',
+          },
+          imagemMimeType: {
+            type: 'string',
+            nullable: true,
+            description: 'MIME type da imagem armazenada (ex.: image/jpeg)',
+          },
           endereco: {
             type: 'string',
             description: 'Endereço completo da quadra',
