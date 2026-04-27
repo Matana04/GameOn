@@ -5,9 +5,11 @@ const prisma = require('../database/prismaClient');
 function mapQuadraResponse(quadra) {
   if (!quadra) return quadra;
 
+  const { imagemBlob, imagemMimeType, ...rest } = quadra;
+
   return {
-    ...quadra,
-    imagemBlob: quadra.imagemBlob ? Buffer.from(quadra.imagemBlob).toString('base64') : null,
+    ...rest,
+    imagem: imagemBlob ? `/quadras/${quadra.id}/imagem` : null,
   };
 }
 
@@ -113,6 +115,7 @@ const quadraController = {
 
     try {
       const quadra = await quadraModel.findById(id);
+      console.log(quadra)
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
@@ -171,36 +174,30 @@ const quadraController = {
       let quadraAtualizada;
       if (horarios && Array.isArray(horarios)) {
         quadraAtualizada = await prisma.$transaction(async (tx) => {
-          // Deletar horarios antigos
           await tx.horario.deleteMany({ where: { quadraId: Number(id) } });
 
-          // Criar novos horarios
-          const novosHorarios = await Promise.all(
-            horarios.map(h => tx.horario.create({
-              data: {
-                quadraId: Number(id),
-                diaSemana: Number(h.diaSemana),
-                horaAbertura: h.horaAbertura,
-                horaFechamento: h.horaFechamento
-              }
-            }))
-          );
-
-          // Atualizar quadra
-          const quadra = await tx.quadra.update({
-            where: { id: Number(id) },
-            data: updateData,
-            include: { horarios: true }
+          await tx.horario.createMany({
+            data: horarios.map(h => ({
+              quadraId: Number(id),
+              diaSemana: Number(h.diaSemana),
+              horaAbertura: h.horaAbertura,
+              horaFechamento: h.horaFechamento,
+            })),
           });
 
-          return { ...quadra, horarios: novosHorarios };
-        });
+          return tx.quadra.update({
+            where: { id: Number(id) },
+            data: updateData,
+            include: { horarios: true },
+          });
+        }, { timeout: 15000 });
       } else {
         quadraAtualizada = await quadraModel.update(id, updateData);
       }
 
       res.json(mapQuadraResponse(quadraAtualizada));
     } catch (error) {
+      console.log(error)
       res.status(400).json({ erro: 'Erro ao atualizar quadra', detalhes: error.message });
     }
   },
@@ -222,6 +219,26 @@ const quadraController = {
       res.json({ mensagem: 'Quadra deletada com sucesso' });
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao deletar quadra', detalhes: error.message });
+    }
+  },
+
+  getImagem: async (req, res) => {
+    const { id } = req.params;
+    try {
+      const quadra = await prisma.quadra.findUnique({
+        where: { id: Number(id) },
+        select: { imagemBlob: true, imagemMimeType: true },
+      });
+
+      if (!quadra || !quadra.imagemBlob) {
+        return res.status(404).json({ erro: 'Imagem não encontrada' });
+      }
+
+      res.set('Content-Type', quadra.imagemMimeType || 'image/jpeg');
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.send(Buffer.from(quadra.imagemBlob));
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar imagem', detalhes: error.message });
     }
   },
 
@@ -274,7 +291,7 @@ const quadraController = {
             nome: quadraBase.nome,
             esporte: quadraBase.esporte,
             valorPorHora: quadraBase.valorPorHora,
-            imagemBlob: quadraBase.imagemBlob,
+            imagem: quadraBase.imagem,
             locador: quadra.locador.nome,
             data,
             diaSemana: obterNomeDia(diaSemana),
@@ -298,7 +315,7 @@ const quadraController = {
           nome: quadraBase.nome,
           esporte: quadraBase.esporte,
           valorPorHora: quadraBase.valorPorHora,
-          imagemBlob: quadraBase.imagemBlob,
+          imagem: quadraBase.imagem,
           locador: quadra.locador.nome,
           data,
           diaSemana: obterNomeDia(diaSemana),
@@ -409,7 +426,7 @@ const quadraController = {
         esporte: quadraBase.esporte,
         valorPorHora: quadraBase.valorPorHora,
         descricao: quadraBase.descricao,
-        imagemBlob: quadraBase.imagemBlob,
+        imagem: quadraBase.imagem,
         endereco: quadraBase.endereco,
         cidade: quadraBase.cidade,
         estado: quadraBase.estado,

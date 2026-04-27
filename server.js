@@ -11,7 +11,7 @@ const filaRoutes = require('./src/routes/filaRoutes');
 const { iniciarCronJobs } = require('./src/utils/cronJobs');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Força o Node a ignorar certificados "falsos" de redes corporativas
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
