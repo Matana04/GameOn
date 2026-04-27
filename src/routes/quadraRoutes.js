@@ -4,6 +4,8 @@ const { requireAuth, requireLocador } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
+router.get('/:id/imagem', quadraController.getImagem);
+
 router.use(requireAuth);
 
 /**
