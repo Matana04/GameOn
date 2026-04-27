@@ -88,10 +88,7 @@ function iniciarCronJobs() {
     await filaService.processarOfertasExpiradas();
   });
 
-  /**
-   * Executar a cada 15 minutos: processar lembretes de reservas
-   * Expressão: "*/15 * * * *" = a cada 15 minutos
-   */
+
   cron.schedule('*/15 * * * *', async () => {
     console.log('\n📧 Executando verificação de lembretes...');
     await processarLembretesReservas();
