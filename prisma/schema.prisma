@@ -16,7 +16,21 @@ model Usuario {
   tipo      TipoUsuario
   quadras   Quadra[]
   reservas  Reserva[]
+  bloqueiosFeitos    BloqueioLocatario[] @relation("LocadorBloqueios")
+  bloqueiosRecebidos BloqueioLocatario[] @relation("LocatarioBloqueios")
   createdAt DateTime  @default(now())
+}
+
+// Bloqueio de locatário por locador
+model BloqueioLocatario {
+  id          Int      @id @default(autoincrement())
+  locadorId   Int
+  locador     Usuario  @relation("LocadorBloqueios", fields: [locadorId], references: [id])
+  locatarioId Int
+  locatario   Usuario  @relation("LocatarioBloqueios", fields: [locatarioId], references: [id])
+  criadoEm   DateTime @default(now())
+
+  @@unique([locadorId, locatarioId])
 }
 
 enum TipoUsuario {
@@ -28,19 +42,38 @@ enum TipoUsuario {
 model Quadra {
   id           Int       @id @default(autoincrement())
   nome         String
-  esporte      String
   valorPorHora Decimal   @db.Decimal(10, 2)
   descricao    String?   @db.Text
   imagemBlob   Bytes?    @db.LongBlob
   imagemMimeType String? @db.VarChar(100)
-  endereco     String?   // Endereço completo da quadra
-  cidade       String?   // Cidade onde fica a quadra
-  estado       String?   // Estado (UF)
-  cep          String?   // CEP opcional
+  endereco     String?
+  cidade       String?
+  estado       String?
+  cep          String?
+  horasAntecedenciaCancelamento Int     @default(6)
+  requerAprovacao               Boolean @default(true)
   locadorId    Int
   locador      Usuario   @relation(fields: [locadorId], references: [id])
   horarios     Horario[]
   reservas     Reserva[]
+  quadraEsportes QuadraEsporte[]
+}
+
+// Tabela de Esportes
+model Esporte {
+  id    Int    @id @default(autoincrement())
+  nome  String @unique
+  quadraEsportes QuadraEsporte[]
+}
+
+// Tabela de relacionamento N-N entre Quadra e Esporte
+model QuadraEsporte {
+  quadraId  Int
+  esporteId Int
+  quadra    Quadra  @relation(fields: [quadraId], references: [id], onDelete: Cascade)
+  esporte   Esporte @relation(fields: [esporteId], references: [id], onDelete: Cascade)
+
+  @@id([quadraId, esporteId])
 }
 
 // Tabela de Horários de Funcionamento da Quadra

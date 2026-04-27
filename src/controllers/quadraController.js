@@ -1,14 +1,16 @@
 const quadraModel = require('../models/quadraModel');
 const reservaModel = require('../models/reservaModel');
 const prisma = require('../database/prismaClient');
+const { normalizarQuadra, resolverEsporteIds } = require('../utils/quadraEsporteUtils');
 
 function mapQuadraResponse(quadra) {
   if (!quadra) return quadra;
 
   const { imagemBlob, imagemMimeType, ...rest } = quadra;
+  const quadraNormalizada = normalizarQuadra(rest);
 
   return {
-    ...rest,
+    ...quadraNormalizada,
     imagem: imagemBlob ? `/quadras/${quadra.id}/imagem` : null,
   };
 }
@@ -24,6 +26,28 @@ function decodeBase64Image(base64Value) {
   }
 }
 
+function parseBooleanValue(value, defaultValue = false) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'sim'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'nao', 'não'].includes(normalized)) return false;
+  }
+
+  return Boolean(value);
+}
+
 const quadraController = {
   list: async (req, res) => {
     try {
@@ -32,7 +56,15 @@ const quadraController = {
       
       if (cidade) where.cidade = { contains: cidade };
       if (estado) where.estado = estado;
-      if (esporte) where.esporte = { contains: esporte };
+      if (esporte) {
+        where.quadraEsportes = {
+          some: {
+            esporte: {
+              nome: { contains: esporte, mode: 'insensitive' },
+            },
+          },
+        };
+      }
       
       if (valorMin || valorMax) {
         where.valorPorHora = {};
@@ -40,7 +72,10 @@ const quadraController = {
         if (valorMax) where.valorPorHora.lte = parseFloat(valorMax);
       }
 
-      const quadras = await prisma.quadra.findMany({ where, include: { horarios: true } });
+      const quadras = await prisma.quadra.findMany({
+        where,
+        include: { horarios: true, quadraEsportes: { include: { esporte: true } } },
+      });
       res.json(quadras.map(mapQuadraResponse));
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar quadras', detalhes: error.message });
@@ -51,6 +86,8 @@ const quadraController = {
     const {
       nome,
       esporte,
+      esporteIds,
+      esportes,
       valorPorHora,
       descricao,
       endereco,
@@ -60,11 +97,13 @@ const quadraController = {
       horarios,
       imagemBlob,
       imagemMimeType,
+      horasAntecedenciaCancelamento,
+      requerAprovacao,
     } = req.body;
     const locadorId = req.user.id;
 
-    if (!nome || !esporte || !valorPorHora || !horarios || !Array.isArray(horarios)) {
-      return res.status(400).json({ erro: 'Campos obrigatórios: nome, esporte, valorPorHora, horarios (array)' });
+    if (!nome || (!Array.isArray(esporteIds) && !Array.isArray(esportes) && !esporte) || !valorPorHora || !Array.isArray(horarios)) {
+      return res.status(400).json({ erro: 'Campos obrigatórios: nome, esportes, valorPorHora, horarios (array)' });
     }
 
     let imagemBuffer = decodeBase64Image(imagemBlob);
@@ -74,34 +113,52 @@ const quadraController = {
 
     try {
       const novaQuadra = await prisma.$transaction(async (tx) => {
+        const esporteIdsResolvidos = await resolverEsporteIds(tx, { esporteIds, esportes, esporte });
+
         const quadra = await tx.quadra.create({
-          data: { 
-            nome, 
-            esporte, 
-            valorPorHora: parseFloat(valorPorHora), 
-            descricao, 
+          data: {
+            nome,
+            valorPorHora: parseFloat(valorPorHora),
+            descricao,
             imagemBlob: imagemBuffer === undefined ? null : imagemBuffer,
             imagemMimeType: imagemBuffer ? (imagemMimeType || 'application/octet-stream') : null,
             endereco,
             cidade,
             estado,
             cep,
-            locadorId: Number(locadorId) 
+            horasAntecedenciaCancelamento: horasAntecedenciaCancelamento !== undefined ? Number(horasAntecedenciaCancelamento) : 6,
+            requerAprovacao: requerAprovacao !== undefined ? parseBooleanValue(requerAprovacao, true) : true,
+            locadorId: Number(locadorId)
           }
         });
 
-        const horariosCriados = await Promise.all(
-          horarios.map(h => tx.horario.create({
-            data: {
-              quadraId: quadra.id,
-              diaSemana: Number(h.diaSemana),
-              horaAbertura: h.horaAbertura,
-              horaFechamento: h.horaFechamento
-            }
-          }))
-        );
+        await tx.quadraEsporte.createMany({
+          data: esporteIdsResolvidos.map((esporteId) => ({
+            quadraId: quadra.id,
+            esporteId,
+          })),
+        });
 
-        return { ...quadra, horarios: horariosCriados };
+        const horariosCriados = horarios.length > 0
+          ? await Promise.all(
+              horarios.map(h => tx.horario.create({
+                data: {
+                  quadraId: quadra.id,
+                  diaSemana: Number(h.diaSemana),
+                  horaAbertura: h.horaAbertura,
+                  horaFechamento: h.horaFechamento
+                }
+              }))
+            )
+          : [];
+
+        return tx.quadra.findUnique({
+          where: { id: quadra.id },
+          include: {
+            horarios: true,
+            quadraEsportes: { include: { esporte: true } },
+          },
+        });
       }, { timeout: 10000 });
 
       res.status(201).json(mapQuadraResponse(novaQuadra));
@@ -130,6 +187,8 @@ const quadraController = {
     const {
       nome,
       esporte,
+      esporteIds,
+      esportes,
       valorPorHora,
       descricao,
       endereco,
@@ -139,6 +198,8 @@ const quadraController = {
       horarios,
       imagemBlob,
       imagemMimeType,
+      horasAntecedenciaCancelamento,
+      requerAprovacao,
     } = req.body;
 
     try {
@@ -151,15 +212,37 @@ const quadraController = {
         return res.status(403).json({ erro: 'Você não tem permissão para atualizar esta quadra' });
       }
 
+      const requerAprovacaoNovo = requerAprovacao !== undefined
+        ? parseBooleanValue(requerAprovacao, quadraExistente.requerAprovacao)
+        : quadraExistente.requerAprovacao;
+
+      if (requerAprovacao !== undefined && requerAprovacaoNovo !== quadraExistente.requerAprovacao) {
+        const pendentesAprovacao = await prisma.reserva.count({
+          where: {
+            quadraId: Number(id),
+            status: 'AGUARDANDO_APROVACAO',
+          },
+        });
+
+        if (pendentesAprovacao > 0) {
+          return res.status(400).json({
+            erro: 'Não é possível alterar a regra de aprovação enquanto existirem agendamentos aguardando aprovação para esta quadra',
+          });
+        }
+      }
+
       const updateData = {};
       if (nome) updateData.nome = nome;
-      if (esporte) updateData.esporte = esporte;
       if (valorPorHora) updateData.valorPorHora = parseFloat(valorPorHora);
       if (descricao !== undefined) updateData.descricao = descricao;
       if (endereco !== undefined) updateData.endereco = endereco;
       if (cidade !== undefined) updateData.cidade = cidade;
       if (estado !== undefined) updateData.estado = estado;
       if (cep !== undefined) updateData.cep = cep;
+      if (horasAntecedenciaCancelamento !== undefined) updateData.horasAntecedenciaCancelamento = Number(horasAntecedenciaCancelamento);
+      if (requerAprovacao !== undefined) updateData.requerAprovacao = requerAprovacaoNovo;
+
+      const temEsportesNoPayload = Array.isArray(esporteIds) || Array.isArray(esportes) || esporte;
 
       let imagemBuffer = decodeBase64Image(imagemBlob);
       if (imagemBuffer === 'INVALID_BASE64') {
@@ -172,23 +255,36 @@ const quadraController = {
       }
 
       let quadraAtualizada;
-      if (horarios && Array.isArray(horarios)) {
+      if ((horarios && Array.isArray(horarios)) || temEsportesNoPayload) {
         quadraAtualizada = await prisma.$transaction(async (tx) => {
-          await tx.horario.deleteMany({ where: { quadraId: Number(id) } });
+          if (horarios && Array.isArray(horarios)) {
+            await tx.horario.deleteMany({ where: { quadraId: Number(id) } });
 
-          await tx.horario.createMany({
-            data: horarios.map(h => ({
-              quadraId: Number(id),
-              diaSemana: Number(h.diaSemana),
-              horaAbertura: h.horaAbertura,
-              horaFechamento: h.horaFechamento,
-            })),
-          });
+            await tx.horario.createMany({
+              data: horarios.map(h => ({
+                quadraId: Number(id),
+                diaSemana: Number(h.diaSemana),
+                horaAbertura: h.horaAbertura,
+                horaFechamento: h.horaFechamento,
+              })),
+            });
+          }
+
+          if (temEsportesNoPayload) {
+            const esporteIdsResolvidos = await resolverEsporteIds(tx, { esporteIds, esportes, esporte });
+            await tx.quadraEsporte.deleteMany({ where: { quadraId: Number(id) } });
+            await tx.quadraEsporte.createMany({
+              data: esporteIdsResolvidos.map((esporteId) => ({
+                quadraId: Number(id),
+                esporteId,
+              })),
+            });
+          }
 
           return tx.quadra.update({
             where: { id: Number(id) },
             data: updateData,
-            include: { horarios: true },
+            include: { horarios: true, quadraEsportes: { include: { esporte: true } } },
           });
         }, { timeout: 15000 });
       } else {
@@ -271,6 +367,7 @@ const quadraController = {
         include: {
           horarios: true,
           locador: { select: { id: true, nome: true } },
+          quadraEsportes: { include: { esporte: true } },
           reservas: {
             where: {
               status: { in: ['RESERVADO', 'AGUARDANDO_APROVACAO'] },
@@ -284,17 +381,22 @@ const quadraController = {
       const resultado = quadras.map(quadra => {
         const quadraBase = mapQuadraResponse(quadra);
         const horarioDia = quadra.horarios.find(h => h.diaSemana === diaSemana);
+        const retornoBase = {
+          id: quadraBase.id,
+          nome: quadraBase.nome,
+          esporte: quadraBase.esporte,
+          esportes: quadraBase.esportes,
+          esporteIds: quadraBase.esporteIds,
+          valorPorHora: quadraBase.valorPorHora,
+          imagem: quadraBase.imagem,
+          locador: quadra.locador.nome,
+          data,
+          diaSemana: obterNomeDia(diaSemana),
+        };
 
         if (!horarioDia) {
           return {
-            id: quadraBase.id,
-            nome: quadraBase.nome,
-            esporte: quadraBase.esporte,
-            valorPorHora: quadraBase.valorPorHora,
-            imagem: quadraBase.imagem,
-            locador: quadra.locador.nome,
-            data,
-            diaSemana: obterNomeDia(diaSemana),
+            ...retornoBase,
             aberto: false,
             horariosDisponiveis: []
           };
@@ -311,14 +413,7 @@ const quadraController = {
         });
 
         return {
-          id: quadraBase.id,
-          nome: quadraBase.nome,
-          esporte: quadraBase.esporte,
-          valorPorHora: quadraBase.valorPorHora,
-          imagem: quadraBase.imagem,
-          locador: quadra.locador.nome,
-          data,
-          diaSemana: obterNomeDia(diaSemana),
+          ...retornoBase,
           aberto: true,
           horaAbertura: horarioDia.horaAbertura,
           horaFechamento: horarioDia.horaFechamento,
@@ -359,7 +454,11 @@ const quadraController = {
       }
 
       if (esporte) {
-        where.esporte = { contains: esporte, mode: 'insensitive' };
+        where.quadraEsportes = {
+          some: {
+            esporte: { nome: { contains: esporte, mode: 'insensitive' } }
+          }
+        };
       }
 
       // Buscar quadras com filtros
@@ -368,6 +467,7 @@ const quadraController = {
         include: { 
           horarios: true, 
           locador: { select: { id: true, nome: true, email: true } },
+          quadraEsportes: { include: { esporte: true } },
           reservas: {
             where: {
               status: { in: ['RESERVADO', 'AGUARDANDO_APROVACAO'] }
@@ -421,27 +521,32 @@ const quadraController = {
         const quadraBase = mapQuadraResponse(quadra);
 
         return {
-        id: quadraBase.id,
-        nome: quadraBase.nome,
-        esporte: quadraBase.esporte,
-        valorPorHora: quadraBase.valorPorHora,
-        descricao: quadraBase.descricao,
-        imagem: quadraBase.imagem,
-        endereco: quadraBase.endereco,
-        cidade: quadraBase.cidade,
-        estado: quadraBase.estado,
-        cep: quadraBase.cep,
-        locador: quadra.locador,
-        horarios: quadra.horarios.map(h => ({
-          diaSemana: h.diaSemana,
-          horaAbertura: h.horaAbertura,
-          horaFechamento: h.horaFechamento,
-          nomeDia: obterNomeDia(h.diaSemana)
-        })),
-        disponivel: quadra.disponivel,
-        periodo: quadra.periodo,
-        conflitos: quadra.conflitos || 0
-      }});
+          id: quadraBase.id,
+          nome: quadraBase.nome,
+          esporte: quadraBase.esporte,
+          esportes: quadraBase.esportes,
+          esporteIds: quadraBase.esporteIds,
+          valorPorHora: quadraBase.valorPorHora,
+          descricao: quadraBase.descricao,
+          imagem: quadraBase.imagem,
+          endereco: quadraBase.endereco,
+          cidade: quadraBase.cidade,
+          estado: quadraBase.estado,
+          cep: quadraBase.cep,
+          horasAntecedenciaCancelamento: quadraBase.horasAntecedenciaCancelamento,
+          requerAprovacao: quadraBase.requerAprovacao,
+          locador: quadra.locador,
+          horarios: quadra.horarios.map(h => ({
+            diaSemana: h.diaSemana,
+            horaAbertura: h.horaAbertura,
+            horaFechamento: h.horaFechamento,
+            nomeDia: obterNomeDia(h.diaSemana)
+          })),
+          disponivel: quadra.disponivel,
+          periodo: quadra.periodo,
+          conflitos: quadra.conflitos || 0
+        };
+      });
 
       res.json({
         total: quadrasFormatadas.length,

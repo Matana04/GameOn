@@ -8,12 +8,17 @@ const filaService = {
    * Retorna reservas válidas para entrar em fila
    */
   verificarEligibilidadeFila: async (quadraId, dataInicio, dataFim) => {
-    // Validar se a reserva está dentro de 6 horas antes do horário
+    const quadra = await prisma.quadra.findUnique({
+      where: { id: Number(quadraId) },
+      select: { horasAntecedenciaCancelamento: true }
+    });
+    const horasMinimas = quadra?.horasAntecedenciaCancelamento ?? 6;
+
     const agora = new Date();
     const horasAteReserva = (dataInicio - agora) / (1000 * 60 * 60);
-    
-    if (horasAteReserva < 6) {
-      throw new Error('Não é possível entrar em fila. A reserva deve ser com pelo menos 6 horas de antecedência.');
+
+    if (horasAteReserva < horasMinimas) {
+      throw new Error(`Não é possível entrar em fila. A reserva deve ser com pelo menos ${horasMinimas}h de antecedência.`);
     }
 
     // Buscar conflitos

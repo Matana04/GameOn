@@ -1,12 +1,16 @@
 const prisma = require('../database/prismaClient');
 const { formatarISOLocal } = require('../utils/dateUtils');
+const { normalizarQuadra } = require('../utils/quadraEsporteUtils');
 
 /**
  * Formata uma reserva convertendo datas para hora local
  */
 function formatarReserva(reserva) {
+  if (!reserva) return reserva;
+
   return {
     ...reserva,
+    quadra: normalizarQuadra(reserva.quadra),
     dataInicio: formatarISOLocal(reserva.dataInicio),
     dataFim: formatarISOLocal(reserva.dataFim)
   };
@@ -16,28 +20,28 @@ const reservaModel = {
   // Buscar todas as reservas
   findAll: async () => prisma.reserva.findMany({
     include: { 
-      quadra: { include: { locador: true, horarios: true } },
+      quadra: { include: { locador: true, horarios: true, quadraEsportes: { include: { esporte: true } } } },
       locatario: true 
     }
-  }),
+  }).then((reservas) => reservas.map(formatarReserva)),
 
   // Buscar reserva por ID
   findById: async (id) => prisma.reserva.findUnique({
     where: { id: Number(id) },
     include: { 
-      quadra: { include: { locador: true, horarios: true } },
+      quadra: { include: { locador: true, horarios: true, quadraEsportes: { include: { esporte: true } } } },
       locatario: true 
     }
-  }),
+  }).then(formatarReserva),
 
   // Buscar reservas por quadra
   findByQuadra: async (quadraId) => prisma.reserva.findMany({
     where: { quadraId: Number(quadraId) },
     include: { 
-      quadra: { include: { locador: true, horarios: true } },
+      quadra: { include: { locador: true, horarios: true, quadraEsportes: { include: { esporte: true } } } },
       locatario: true 
     }
-  }),
+  }).then((reservas) => reservas.map(formatarReserva)),
 
   // Buscar clientes que já fizeram reservas em uma quadra
   findClientesByQuadra: async (quadraId) => prisma.reserva.findMany({
@@ -46,11 +50,11 @@ const reservaModel = {
       status: { not: 'EM_FILA' }
     },
     include: {
-      quadra: true,
+      quadra: { include: { quadraEsportes: { include: { esporte: true } } } },
       locatario: true
     },
     orderBy: { dataInicio: 'desc' }
-  }),
+  }).then((reservas) => reservas.map(formatarReserva)),
 
   // Buscar clientes únicos de todas as quadras de um locador
   findClientesByLocador: async (locadorId) => prisma.reserva.findMany({
@@ -70,48 +74,48 @@ const reservaModel = {
       status: { not: 'EM_FILA' }
     },
     include: {
-      quadra: true,
+      quadra: { include: { quadraEsportes: { include: { esporte: true } } } },
       locatario: true
     },
     orderBy: { dataInicio: 'desc' }
-  }),
+  }).then((reservas) => reservas.map(formatarReserva)),
 
   // Buscar reservas do locatário
   findByLocatario: async (locatarioId) => prisma.reserva.findMany({
     where: { locatarioId: Number(locatarioId) },
     include: { 
-      quadra: { include: { locador: true, horarios: true } },
+      quadra: { include: { locador: true, horarios: true, quadraEsportes: { include: { esporte: true } } } },
       locatario: true 
     }
-  }),
+  }).then((reservas) => reservas.map(formatarReserva)),
 
   // Buscar reservas do locador (quadras que ele aluga)
   findByLocador: async (locadorId) => prisma.reserva.findMany({
     where: { quadra: { locadorId: Number(locadorId) } },
     include: { 
-      quadra: { include: { locador: true, horarios: true } },
+      quadra: { include: { locador: true, horarios: true, quadraEsportes: { include: { esporte: true } } } },
       locatario: true 
     }
-  }),
+  }).then((reservas) => reservas.map(formatarReserva)),
 
   // Criar nova reserva
   create: async (reservaData) => prisma.reserva.create({
     data: reservaData,
     include: { 
-      quadra: { include: { locador: true, horarios: true } },
+      quadra: { include: { locador: true, horarios: true, quadraEsportes: { include: { esporte: true } } } },
       locatario: true 
     }
-  }),
+  }).then(formatarReserva),
 
   // Atualizar reserva
   update: async (id, data) => prisma.reserva.update({
     where: { id: Number(id) },
     data,
     include: { 
-      quadra: { include: { locador: true, horarios: true } },
+      quadra: { include: { locador: true, horarios: true, quadraEsportes: { include: { esporte: true } } } },
       locatario: true 
     }
-  }),
+  }).then(formatarReserva),
 
   // Deletar reserva
   delete: async (id) => prisma.reserva.delete({

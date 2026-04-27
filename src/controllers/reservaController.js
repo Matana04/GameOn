@@ -2,9 +2,10 @@ const reservaModel = require('../models/reservaModel');
 const quadraModel = require('../models/quadraModel');
 const emailService = require('../services/emailService');
 const prisma = require('../database/prismaClient');
-const { converterParaUTC, formatarISOLocal } = require('../utils/dateUtils');
+const { converterParaUTC, formatarISOLocal, converterDeUTC } = require('../utils/dateUtils');
 const filaService = require('../services/filaService');
 const securityService = require('../services/securityService');
+const bloqueioModel = require('../models/bloqueioModel');
 
 // Parseia uma string de data assumindo UTC-3 quando não há timezone explícito,
 // evitando dupla conversão quando o servidor já roda em UTC-3.
@@ -146,6 +147,12 @@ const reservaController = {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
 
+      // Verificar se o locatário está bloqueado pelo locador desta quadra
+      const bloqueio = await bloqueioModel.buscar(quadra.locadorId, locatarioId);
+      if (bloqueio) {
+        return res.status(403).json({ erro: 'Você está bloqueado pelo locador desta quadra e não pode realizar reservas' });
+      }
+
       // Validar horários de funcionamento (usar datas locais para validação)
       const dataInicioLocal = new Date(dataInicio);
       const dataFimLocal = new Date(dataFim);
@@ -252,6 +259,8 @@ const reservaController = {
       // Gerar código de segurança
       const codigoSeguranca = securityService.gerarCodigoSeguranca();
 
+      const statusInicial = quadra.requerAprovacao ? 'AGUARDANDO_APROVACAO' : 'RESERVADO';
+
       // Criar reserva em transação
       const novaReserva = await prisma.$transaction(async (tx) => {
         return tx.reserva.create({
@@ -261,8 +270,8 @@ const reservaController = {
             dataInicio: dataInicioObj,
             dataFim: dataFimObj,
             valorTotal: parseFloat(valorTotal.toFixed(2)),
-            status: 'RESERVADO',
-            timezoneOffset: -180, // UTC-3
+            status: statusInicial,
+            timezoneOffset: -180,
             codigoSeguranca: codigoSeguranca
           },
           include: {
@@ -272,43 +281,65 @@ const reservaController = {
         });
       });
 
-      // Enviar email para o locatário confirmando que a reserva foi solicitada
-      emailService.enviar(
-        novaReserva.locatario.email,
-        `${novaReserva.quadra.nome} - Sua reserva foi enviada para aprovação`,
-        `
-          <h2>Reserva enviada para aprovação</h2>
-          <p>Olá ${novaReserva.locatario.nome},</p>
-          <p>Sua solicitação de reserva foi recebida e está aguardando aprovação do locador.</p>
-          <ul>
-            <li><strong>Quadra:</strong> ${novaReserva.quadra.nome} (${novaReserva.quadra.esporte})</li>
-            <li><strong>Data/Hora:</strong> ${formatarISOLocal(novaReserva.dataInicio)} até ${formatarISOLocal(novaReserva.dataFim)}</li>
-            <li><strong>Valor:</strong> R$ ${parseFloat(novaReserva.valorTotal).toFixed(2)}</li>
-          </ul>
-          <p>Você receberá uma notificação assim que o locador aprovar ou rejeitar sua solicitação.</p>
-        `
-      );
+      if (statusInicial === 'AGUARDANDO_APROVACAO') {
+        emailService.enviar(
+          novaReserva.locatario.email,
+          `${novaReserva.quadra.nome} - Sua reserva foi enviada para aprovação`,
+          `
+            <h2>Reserva enviada para aprovação</h2>
+            <p>Olá ${novaReserva.locatario.nome},</p>
+            <p>Sua solicitação de reserva foi recebida e está aguardando aprovação do locador.</p>
+            <ul>
+              <li><strong>Quadra:</strong> ${novaReserva.quadra.nome} (${novaReserva.quadra.esporte})</li>
+              <li><strong>Data/Hora:</strong> ${formatarISOLocal(novaReserva.dataInicio)} até ${formatarISOLocal(novaReserva.dataFim)}</li>
+              <li><strong>Valor:</strong> R$ ${parseFloat(novaReserva.valorTotal).toFixed(2)}</li>
+            </ul>
+            <p>Você receberá uma notificação assim que o locador aprovar ou rejeitar sua solicitação.</p>
+          `
+        );
+        emailService.enviar(
+          novaReserva.quadra.locador.email,
+          `${novaReserva.quadra.nome} - Nova solicitação de reserva`,
+          `
+            <h2>Nova solicitação de reserva para aprovar</h2>
+            <p>Olá ${novaReserva.quadra.locador.nome},</p>
+            <p>O locatário <strong>${novaReserva.locatario.nome}</strong> solicitou uma reserva para sua quadra:</p>
+            <ul>
+              <li><strong>Quadra:</strong> ${novaReserva.quadra.nome}</li>
+              <li><strong>Data/Hora:</strong> ${formatarISOLocal(novaReserva.dataInicio)} até ${formatarISOLocal(novaReserva.dataFim)}</li>
+              <li><strong>Valor:</strong> R$ ${parseFloat(novaReserva.valorTotal).toFixed(2)}</li>
+              <li><strong>Locatário:</strong> ${novaReserva.locatario.nome} (${novaReserva.locatario.email})</li>
+            </ul>
+            <p>Por favor, aprove ou rejeite esta solicitação em seu painel.</p>
+          `
+        );
+      } else {
+        const inicioEmail = formatarParaEmail(novaReserva.dataInicio);
+        const fimEmail = formatarParaEmail(novaReserva.dataFim);
+        emailService.enviar(
+          novaReserva.locatario.email,
+          `${novaReserva.quadra.nome} - Quadra reservada para ${inicioEmail.hora} do dia ${inicioEmail.data}!`,
+          `
+            <h2>Sua quadra foi reservada!</h2>
+            <p>Olá ${novaReserva.locatario.nome},</p>
+            <p>Sua quadra foi reservada com sucesso às <strong>${inicioEmail.hora}</strong> do dia <strong>${inicioEmail.data}</strong>.</p>
+            <ul>
+              <li><strong>Quadra:</strong> ${novaReserva.quadra.nome} (${novaReserva.quadra.esporte})</li>
+              <li><strong>Horário:</strong> ${inicioEmail.hora} até ${fimEmail.hora}</li>
+              <li><strong>Data:</strong> ${inicioEmail.data}</li>
+              <li><strong>Valor Total:</strong> R$ ${parseFloat(novaReserva.valorTotal).toFixed(2)}</li>
+            </ul>
+            <p>Aproveite a quadra!</p>
+          `
+        );
+      }
 
-      // Enviar email para o locador informando que há uma nova reserva para aprovar
-      emailService.enviar(
-        novaReserva.quadra.locador.email,
-        `${novaReserva.quadra.nome} - Nova solicitação de reserva`,
-        `
-          <h2>Nova solicitação de reserva para aprovar</h2>
-          <p>Olá ${novaReserva.quadra.locador.nome},</p>
-          <p>O locatário <strong>${novaReserva.locatario.nome}</strong> solicitou uma reserva para sua quadra:</p>
-          <ul>
-            <li><strong>Quadra:</strong> ${novaReserva.quadra.nome}</li>
-            <li><strong>Data/Hora:</strong> ${formatarISOLocal(novaReserva.dataInicio)} até ${formatarISOLocal(novaReserva.dataFim)}</li>
-            <li><strong>Valor:</strong> R$ ${parseFloat(novaReserva.valorTotal).toFixed(2)}</li>
-            <li><strong>Locatário:</strong> ${novaReserva.locatario.nome} (${novaReserva.locatario.email})</li>
-          </ul>
-          <p>Por favor, aprove ou rejeite esta solicitação em seu painel.</p>
-        `
-      );
+      const mensagemRetorno = statusInicial === 'AGUARDANDO_APROVACAO'
+        ? 'Reserva criada com sucesso! Aguardando aprovação do locador.'
+        : 'Reserva confirmada com sucesso!';
 
       res.status(201).json({
-        mensagem: 'Reserva criada com sucesso! Aguardando aprovação do locador.',
+        mensagem: mensagemRetorno,
         reserva: {
           id: novaReserva.id,
           quadra: {
@@ -397,7 +428,7 @@ const reservaController = {
         if (status === 'RESERVADO') {
           emailService.enviar(
             reservaAtualizada.locatario.email,
-            `${reservaAtualizada.quadra.nome} - Sua reserva foi APROVADA! ✅`,
+            `${reservaAtualizada.quadra.nome} - Sua reserva foi APROVADA!`,
             `
               <h2>Sua reserva foi aprovada!</h2>
               <p>Olá ${reservaAtualizada.locatario.nome},</p>
@@ -413,7 +444,7 @@ const reservaController = {
         } else if (status === 'CANCELADO') {
           emailService.enviar(
             reservaAtualizada.locatario.email,
-            `${reservaAtualizada.quadra.nome} - Sua reserva foi REJEITADA ❌`,
+            `${reservaAtualizada.quadra.nome} - Sua reserva foi REJEITADA`,
             `
               <h2>Sua reserva foi rejeitada</h2>
               <p>Olá ${reservaAtualizada.locatario.nome},</p>
@@ -446,6 +477,14 @@ const reservaController = {
       if (isLocatario && status === 'CANCELADO') {
         if (reserva.status === 'CANCELADO') {
           return res.status(400).json({ erro: 'Reserva já foi cancelada' });
+        }
+
+        const horasAntecedencia = reserva.quadra.horasAntecedenciaCancelamento ?? 6;
+        const horasRestantes = (new Date(reserva.dataInicio) - new Date()) / 3600000;
+        if (horasRestantes < horasAntecedencia) {
+          return res.status(400).json({
+            erro: `Cancelamento não permitido. Esta quadra exige ${horasAntecedencia}h de antecedência para cancelamento sem prejuízo. Restam ${Math.max(0, horasRestantes).toFixed(1)}h para a reserva.`
+          });
         }
 
         // Se é RESERVADO ou AGUARDANDO_APROVACAO, processar fila
@@ -505,6 +544,17 @@ const reservaController = {
       // Validar se pode cancelar (não está cancelada)
       if (reserva.status === 'CANCELADO') {
         return res.status(400).json({ erro: 'Reserva já foi cancelada' });
+      }
+
+      // Locatário deve respeitar a antecedência mínima configurada na quadra
+      if (req.user.tipo === 'LOCATARIO') {
+        const horasAntecedencia = reserva.quadra.horasAntecedenciaCancelamento ?? 6;
+        const horasRestantes = (new Date(reserva.dataInicio) - new Date()) / 3600000;
+        if (horasRestantes < horasAntecedencia) {
+          return res.status(400).json({
+            erro: `Cancelamento não permitido. Esta quadra exige ${horasAntecedencia}h de antecedência para cancelamento sem prejuízo. Restam ${Math.max(0, horasRestantes).toFixed(1)}h para a reserva.`
+          });
+        }
       }
 
       // Se é RESERVADO ou AGUARDANDO_APROVACAO, processar fila
@@ -1182,6 +1232,16 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
 function obterNomeDia(dia) {
   const dias = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
   return dias[dia];
+}
+
+function formatarParaEmail(data) {
+  const d = converterDeUTC(new Date(data));
+  const dia = String(d.getUTCDate()).padStart(2, '0');
+  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const ano = d.getUTCFullYear();
+  const horas = String(d.getUTCHours()).padStart(2, '0');
+  const minutos = String(d.getUTCMinutes()).padStart(2, '0');
+  return { data: `${dia}/${mes}/${ano}`, hora: `${horas}:${minutos}` };
 }
 
 /**

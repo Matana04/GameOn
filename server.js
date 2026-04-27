@@ -8,6 +8,8 @@ const authRoutes = require('./src/routes/authRoutes');
 const quadraRoutes = require('./src/routes/quadraRoutes');
 const reservaRoutes = require('./src/routes/reservaRoutes');
 const filaRoutes = require('./src/routes/filaRoutes');
+const bloqueioRoutes = require('./src/routes/bloqueioRoutes');
+const esporteRoutes = require('./src/routes/esporteRoutes');
 const { iniciarCronJobs } = require('./src/utils/cronJobs');
 
 const app = express();
@@ -24,6 +26,8 @@ app.use('/auth', authRoutes);
 app.use('/quadras', quadraRoutes);
 app.use('/reservas', reservaRoutes);
 app.use('/fila', filaRoutes);
+app.use('/bloqueios', bloqueioRoutes);
+app.use('/esportes', esporteRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
