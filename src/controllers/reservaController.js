@@ -4,6 +4,7 @@ const emailService = require('../services/emailService');
 const prisma = require('../database/prismaClient');
 const { converterParaUTC, formatarISOLocal } = require('../utils/dateUtils');
 const filaService = require('../services/filaService');
+const securityService = require('../services/securityService');
 
 // Parseia uma string de data assumindo UTC-3 quando não há timezone explícito,
 // evitando dupla conversão quando o servidor já roda em UTC-3.
@@ -25,7 +26,14 @@ const reservaController = {
         reservas = await reservaModel.findByLocatario(req.user.id);
       }
       
-      res.json(reservas.map(r => ({
+      // Filtrar códigos de segurança baseado em permissões
+      const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
+        reservas,
+        req.user.id,
+        req.user.tipo
+      );
+      
+      res.json(reservasComSeguranca.map(r => ({
         ...r,
         dataInicio: formatarISOLocal(r.dataInicio),
         dataFim: formatarISOLocal(r.dataFim)
@@ -166,6 +174,9 @@ const reservaController = {
 
           const valorTotal = parseFloat(quadra.valorPorHora) * duracao;
 
+          // Gerar código de segurança para reserva em fila também
+          const codigoSegurancaFila = securityService.gerarCodigoSeguranca();
+
           // Criar reserva com status EM_FILA
           const novaReservaFila = await prisma.reserva.create({
             data: {
@@ -175,7 +186,8 @@ const reservaController = {
               dataFim: dataFimObj,
               valorTotal: parseFloat(valorTotal.toFixed(2)),
               status: 'EM_FILA',
-              timezoneOffset: -180
+              timezoneOffset: -180,
+              codigoSeguranca: codigoSegurancaFila
             },
             include: {
               quadra: { include: { locador: true, horarios: true } },
@@ -237,6 +249,9 @@ const reservaController = {
 
       const valorTotal = parseFloat(quadra.valorPorHora) * duracao;
 
+      // Gerar código de segurança
+      const codigoSeguranca = securityService.gerarCodigoSeguranca();
+
       // Criar reserva em transação
       const novaReserva = await prisma.$transaction(async (tx) => {
         return tx.reserva.create({
@@ -247,7 +262,8 @@ const reservaController = {
             dataFim: dataFimObj,
             valorTotal: parseFloat(valorTotal.toFixed(2)),
             status: 'RESERVADO',
-            timezoneOffset: -180 // UTC-3
+            timezoneOffset: -180, // UTC-3
+            codigoSeguranca: codigoSeguranca
           },
           include: {
             quadra: { include: { locador: true, horarios: true } },
@@ -301,6 +317,7 @@ const reservaController = {
             esporte: novaReserva.quadra.esporte
           },
           locatario: novaReserva.locatario.nome,
+          codigoSeguranca: novaReserva.codigoSeguranca,
           periodo: {
             dataInicio: formatarISOLocal(novaReserva.dataInicio),
             dataFim: formatarISOLocal(novaReserva.dataFim),
@@ -333,10 +350,17 @@ const reservaController = {
         return res.status(403).json({ erro: 'Você não tem permissão para visualizar esta reserva' });
       }
 
+      // Filtrar código de segurança baseado em permissões
+      const reservaComSeguranca = securityService.filtrarCodigosSeguranca(
+        reserva,
+        req.user.id,
+        req.user.tipo
+      );
+
       res.json({
-        ...reserva,
-        dataInicio: formatarISOLocal(reserva.dataInicio),
-        dataFim: formatarISOLocal(reserva.dataFim)
+        ...reservaComSeguranca,
+        dataInicio: formatarISOLocal(reservaComSeguranca.dataInicio),
+        dataFim: formatarISOLocal(reservaComSeguranca.dataFim)
       });
     } catch (error) {
       res.status(500).json({ erro: 'Erro ao buscar reserva', detalhes: error.message });
@@ -530,6 +554,13 @@ const reservaController = {
 
       const reservas = await reservaModel.findByQuadra(quadraId);
 
+      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
+      const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
+        reservas,
+        req.user.id,
+        'LOCADOR'
+      );
+
       res.json({
         quadra: {
           id: quadra.id,
@@ -537,10 +568,11 @@ const reservaController = {
           esporte: quadra.esporte,
           valorPorHora: quadra.valorPorHora
         },
-        totalReservas: reservas.length,
-        reservas: reservas.map(r => ({
+        totalReservas: reservasComSeguranca.length,
+        reservas: reservasComSeguranca.map(r => ({
           id: r.id,
           locatario: r.locatario.nome,
+          codigoSeguranca: r.codigoSeguranca,
           periodo: {
             dataInicio: formatarISOLocal(r.dataInicio),
             dataFim: formatarISOLocal(r.dataFim)
@@ -575,6 +607,13 @@ const reservaController = {
       const totalGasto = reservas.reduce((sum, reserva) => sum + parseFloat(reserva.valorTotal), 0);
       const totalClientes = new Set(reservas.map(r => r.locatarioId)).size;
 
+      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
+      const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
+        reservas,
+        req.user.id,
+        'LOCADOR'
+      );
+
       res.json({
         quadra: {
           id: quadra.id,
@@ -582,16 +621,17 @@ const reservaController = {
           esporte: quadra.esporte,
           valorPorHora: quadra.valorPorHora
         },
-        totalReservas: reservas.length,
+        totalReservas: reservasComSeguranca.length,
         totalClientes,
         totalGasto: parseFloat(totalGasto.toFixed(2)),
-        reservas: reservas.map(r => ({
+        reservas: reservasComSeguranca.map(r => ({
           id: r.id,
           locatario: {
             id: r.locatario.id,
             nome: r.locatario.nome,
             email: r.locatario.email
           },
+          codigoSeguranca: r.codigoSeguranca,
           dataInicio: formatarISOLocal(r.dataInicio),
           dataFim: formatarISOLocal(r.dataFim),
           diaReserva: formatarISOLocal(r.dataInicio).split('T')[0],
@@ -642,11 +682,18 @@ const reservaController = {
       const totalGasto = reservas.reduce((sum, reserva) => sum + parseFloat(reserva.valorTotal), 0);
       const totalClientes = new Set(reservas.map(r => r.locatarioId)).size;
 
+      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
+      const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
+        reservas,
+        req.user.id,
+        'LOCADOR'
+      );
+
       res.json({
-        totalReservas: reservas.length,
+        totalReservas: reservasComSeguranca.length,
         totalClientes,
         totalGasto: parseFloat(totalGasto.toFixed(2)),
-        historico: reservas.map(r => ({
+        historico: reservasComSeguranca.map(r => ({
           id: r.id,
           quadra: {
             id: r.quadra.id,
@@ -658,6 +705,7 @@ const reservaController = {
             nome: r.locatario.nome,
             email: r.locatario.email
           },
+          codigoSeguranca: r.codigoSeguranca,
           dataInicio: formatarISOLocal(r.dataInicio),
           dataFim: formatarISOLocal(r.dataFim),
           diaReserva: formatarISOLocal(r.dataInicio).split('T')[0],
@@ -716,6 +764,7 @@ const reservaController = {
               dataFim: formatarISOLocal(proxima.dataFim)
             },
             valorTotal: proxima.valorTotal,
+            codigoSeguranca: proxima.codigoSeguranca,
             status: proxima.status
           },
           dataSolicitacao: proxima.dataCriacao,
@@ -774,6 +823,7 @@ const reservaController = {
             dataFim: formatarISOLocal(proxima.dataFim)
           },
           valorTotal: proxima.valorTotal,
+          codigoSeguranca: proxima.codigoSeguranca,
           status: proxima.status
         },
         timer: {
@@ -853,6 +903,7 @@ const reservaController = {
               dataFim: formatarISOLocal(proxima.dataFim)
             },
             valorTotal: proxima.valorTotal,
+            codigoSeguranca: proxima.codigoSeguranca,
             status: proxima.status
           },
           dataSolicitacao: proxima.dataCriacao,
@@ -914,6 +965,7 @@ const reservaController = {
             dataFim: formatarISOLocal(proxima.dataFim)
           },
           valorTotal: proxima.valorTotal,
+          codigoSeguranca: proxima.codigoSeguranca,
           status: proxima.status
         },
         timer: {
@@ -959,10 +1011,17 @@ const reservaController = {
 
       const reservas = await reservaModel.findByLocadorAndDate(req.user.id, data);
 
+      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
+      const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
+        reservas,
+        req.user.id,
+        'LOCADOR'
+      );
+
       res.json({
         data: data,
-        totalReservas: reservas.length,
-        reservas: reservas.map(r => ({
+        totalReservas: reservasComSeguranca.length,
+        reservas: reservasComSeguranca.map(r => ({
           id: r.id,
           quadra: {
             id: r.quadra.id,
@@ -975,6 +1034,7 @@ const reservaController = {
             nome: r.locatario.nome,
             telefone: r.locatario.telefone
           },
+          codigoSeguranca: r.codigoSeguranca,
           periodo: {
             dataInicio: formatarISOLocal(r.dataInicio),
             dataFim: formatarISOLocal(r.dataFim)
@@ -1123,5 +1183,98 @@ function obterNomeDia(dia) {
   const dias = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
   return dias[dia];
 }
+
+/**
+ * Verificar código de segurança de uma reserva
+ * Validação do código é sensível a maiúsculas/minúsculas
+ * O código pode ser verificado pelo locador (proprietário da quadra) ou pelo locatário que fez a reserva
+ */
+reservaController.verificarCodigoSeguranca = async (req, res) => {
+  const { id } = req.params;
+  const { codigo } = req.body;
+
+  try {
+    // Validar entrada
+    if (!codigo || typeof codigo !== 'string') {
+      return res.status(400).json({ 
+        erro: 'Parâmetro obrigatório: codigo (string)' 
+      });
+    }
+
+    // Validar formato do código
+    if (!securityService.validarFormatoCodigo(codigo)) {
+      return res.status(400).json({ 
+        erro: 'Formato de código inválido. Use 4 caracteres alfanuméricos (0-9, A-Z)',
+        formatoEsperado: 'XXXX'
+      });
+    }
+
+    // Buscar reserva
+    const reserva = await reservaModel.findById(id);
+    if (!reserva) {
+      return res.status(404).json({ erro: 'Reserva não encontrada' });
+    }
+
+    // Verificar permissão (locador da quadra ou locatário da reserva)
+    const isLocador = req.user.tipo === 'LOCADOR' && reserva.quadra.locadorId === req.user.id;
+    const isLocatario = req.user.tipo === 'LOCATARIO' && reserva.locatarioId === req.user.id;
+
+    if (!isLocador && !isLocatario) {
+      return res.status(403).json({ 
+        erro: 'Você não tem permissão para verificar o código desta reserva' 
+      });
+    }
+
+    // Validar se a reserva tem código
+    if (!reserva.codigoSeguranca) {
+      return res.status(400).json({ 
+        erro: 'Esta reserva não possui código de segurança associado' 
+      });
+    }
+
+    // Comparar código (case-insensitive para facilitar, mas armazenamos em maiúscula)
+    const codigoFornecido = codigo.toUpperCase();
+    const codigoValido = reserva.codigoSeguranca === codigoFornecido;
+
+    // Retornar resultado
+    if (codigoValido) {
+      return res.json({
+        valido: true,
+        mensagem: 'Código de segurança verificado com sucesso!',
+        reserva: {
+          id: reserva.id,
+          quadra: {
+            id: reserva.quadra.id,
+            nome: reserva.quadra.nome,
+            esporte: reserva.quadra.esporte
+          },
+          locatario: {
+            id: reserva.locatario.id,
+            nome: reserva.locatario.nome,
+            email: reserva.locatario.email
+          },
+          periodo: {
+            dataInicio: formatarISOLocal(reserva.dataInicio),
+            dataFim: formatarISOLocal(reserva.dataFim)
+          },
+          status: reserva.status,
+          valorTotal: reserva.valorTotal
+        }
+      });
+    } else {
+      // Código inválido
+      return res.status(400).json({
+        valido: false,
+        erro: 'Código de segurança incorreto',
+        tentativasRestantes: 'Sem limite de tentativas'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      erro: 'Erro ao verificar código de segurança', 
+      detalhes: error.message 
+    });
+  }
+};
 
 module.exports = reservaController;
