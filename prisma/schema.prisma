@@ -65,6 +65,7 @@ model Reserva {
   timezoneOffset Int        @default(-180) // Offset em minutos (padrão: UTC-3)
   posicaoFila Int?          // Posição na fila de espera (null se não está em fila)
   dataOferta  DateTime?     // Data/hora quando foi ofertado ao locatário
+  codigoSeguranca String?   // Código de segurança alfanumérico (4 dígitos) para verificação
   createdAt   DateTime      @default(now()) // Para ordenar FIFO
 }
 

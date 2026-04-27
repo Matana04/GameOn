@@ -491,4 +491,57 @@ router.get('/locador/:locadorId/clientes', reservaController.getClientesByLocado
  */
 router.get('/quadra/:quadraId', reservaController.getReservasByQuadra);
 
+/**
+ * @swagger
+ * /reservas/{id}/codigo/verificar:
+ *   post:
+ *     summary: Verificar código de segurança de uma reserva
+ *     description: |
+ *       Valida se um código de segurança corresponde a uma reserva.
+ *       O código é usado para comprovar que o locatário foi quem alugou a quadra.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID da reserva
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - codigo
+ *             properties:
+ *               codigo:
+ *                 type: string
+ *                 description: Código de segurança (4 caracteres alfanuméricos)
+ *                 example: "A3B7"
+ *     responses:
+ *       200:
+ *         description: Código válido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 valido:
+ *                   type: boolean
+ *                 mensagem:
+ *                   type: string
+ *                 reserva:
+ *                   type: object
+ *       400:
+ *         description: Código inválido ou formato incorreto
+ *       403:
+ *         description: Sem permissão para verificar este código
+ *       404:
+ *         description: Reserva não encontrada
+ */
+router.post('/:id/codigo/verificar', reservaController.verificarCodigoSeguranca);
+
 module.exports = router;
