@@ -116,6 +116,154 @@ const emailService = {
   },
 
   /**
+   * Enviar email notificando locatário que sua reserva foi cancelada pelo locador
+   */
+  notificarCancelamentoPorLocador: async (locatario, quadra, reserva, motivo = '') => {
+    const assunto = `${quadra.nome} - Sua reserva foi cancelada`;
+    const dataInicio = new Date(reserva.dataInicio).toLocaleString('pt-BR');
+    const dataFim = new Date(reserva.dataFim).toLocaleString('pt-BR');
+    
+    const html = `
+      <h2>Sua reserva foi cancelada</h2>
+      <p>Olá ${locatario.nome},</p>
+      <p>Infelizmente, o locador <strong>${quadra.locador.nome}</strong> cancelou sua reserva:</p>
+      <ul>
+        <li><strong>Quadra:</strong> ${quadra.nome} (${quadra.esporte})</li>
+        <li><strong>Data/Hora:</strong> ${dataInicio} até ${dataFim}</li>
+        <li><strong>Valor:</strong> R$ ${parseFloat(reserva.valorTotal).toFixed(2)}</li>
+      </ul>
+      ${motivo ? `<p><strong>Motivo do cancelamento:</strong> ${motivo}</p>` : ''}
+      <p>Você pode tentar agendar para outro horário ou entrar em contato com o locador para mais informações.</p>
+    `;
+
+    return emailService.enviar(locatario.email, assunto, html);
+  },
+
+  /**
+   * Enviar email notificando locador que sua reserva foi cancelada pelo locatário
+   */
+  notificarCancelamentoPorLocatario: async (locador, quadra, reserva, locatario, motivo = '') => {
+    const assunto = `${quadra.nome} - Reserva cancelada pelo locatário`;
+    const dataInicio = new Date(reserva.dataInicio).toLocaleString('pt-BR');
+    const dataFim = new Date(reserva.dataFim).toLocaleString('pt-BR');
+    
+    const html = `
+      <h2>Uma reserva foi cancelada</h2>
+      <p>Olá ${locador.nome},</p>
+      <p>O locatário <strong>${locatario.nome}</strong> cancelou a seguinte reserva:</p>
+      <ul>
+        <li><strong>Quadra:</strong> ${quadra.nome}</li>
+        <li><strong>Data/Hora:</strong> ${dataInicio} até ${dataFim}</li>
+        <li><strong>Valor:</strong> R$ ${parseFloat(reserva.valorTotal).toFixed(2)}</li>
+        <li><strong>Locatário:</strong> ${locatario.nome} (${locatario.email})</li>
+      </ul>
+      ${motivo ? `<p><strong>Motivo do cancelamento:</strong> ${motivo}</p>` : ''}
+      <p>Essa data está agora disponível para novas reservas.</p>
+      ${reserva.posicaoFila ? `<p>⚠️ <strong>Aviso:</strong> Há locatários aguardando em fila de espera para este horário!</p>` : ''}
+    `;
+
+    return emailService.enviar(locador.email, assunto, html);
+  },
+
+  /**
+   * Enviar lembrete de reserva - 1 dia antes
+   */
+  lembrar1DiaAntes: async (locatario, quadra, reserva) => {
+    const assunto = `📅 Lembrete: ${quadra.nome} em 1 dia`;
+    const dataInicio = new Date(reserva.dataInicio).toLocaleString('pt-BR');
+    const dataFim = new Date(reserva.dataFim).toLocaleString('pt-BR');
+    
+    const html = `
+      <h2>📅 Lembrete da sua Reserva!</h2>
+      <p>Olá ${locatario.nome},</p>
+      <p>Sua reserva acontece <strong>em 1 dia!</strong></p>
+      <ul>
+        <li><strong>Quadra:</strong> ${quadra.nome} (${quadra.esporte})</li>
+        <li><strong>Data/Hora:</strong> ${dataInicio} até ${dataFim}</li>
+        <li><strong>Valor:</strong> R$ ${parseFloat(reserva.valorTotal).toFixed(2)}</li>
+        <li><strong>Código de Segurança:</strong> ${reserva.codigoSeguranca}</li>
+      </ul>
+      <p>Certifique-se de chegar com antecedência!</p>
+    `;
+
+    return emailService.enviar(locatario.email, assunto, html);
+  },
+
+  /**
+   * Enviar lembrete de reserva - 6 horas antes
+   */
+  lembrar6HorasAntes: async (locatario, quadra, reserva) => {
+    const assunto = `⚠️ Lembrete: ${quadra.nome} em 6 horas`;
+    const dataInicio = new Date(reserva.dataInicio).toLocaleString('pt-BR');
+    const dataFim = new Date(reserva.dataFim).toLocaleString('pt-BR');
+    
+    const html = `
+      <h2>⚠️ Lembrete: Sua Reserva em 6 Horas!</h2>
+      <p>Olá ${locatario.nome},</p>
+      <p>Sua reserva acontece <strong>em 6 horas!</strong> Não esqueça de se preparar.</p>
+      <ul>
+        <li><strong>Quadra:</strong> ${quadra.nome} (${quadra.esporte})</li>
+        <li><strong>Data/Hora:</strong> ${dataInicio} até ${dataFim}</li>
+        <li><strong>Valor:</strong> R$ ${parseFloat(reserva.valorTotal).toFixed(2)}</li>
+        <li><strong>Código de Segurança:</strong> ${reserva.codigoSeguranca}</li>
+      </ul>
+      <p>Você pode cancelar até 2 horas antes se necessário.</p>
+    `;
+
+    return emailService.enviar(locatario.email, assunto, html);
+  },
+
+  /**
+   * Enviar lembrete de reserva - 3 horas antes
+   */
+  lembrar3HorasAntes: async (locatario, quadra, reserva) => {
+    const assunto = `⏳ Último Lembrete: ${quadra.nome} em 3 horas`;
+    const dataInicio = new Date(reserva.dataInicio).toLocaleString('pt-BR');
+    const dataFim = new Date(reserva.dataFim).toLocaleString('pt-BR');
+    
+    const html = `
+      <h2>⏳ Último Lembrete: Faltam 3 Horas!</h2>
+      <p>Olá ${locatario.nome},</p>
+      <p>Sua reserva acontece <strong>em apenas 3 horas!</strong> Prepare-se para sair em breve.</p>
+      <ul>
+        <li><strong>Quadra:</strong> ${quadra.nome} (${quadra.esporte})</li>
+        <li><strong>Data/Hora:</strong> ${dataInicio} até ${dataFim}</li>
+        <li><strong>Valor:</strong> R$ ${parseFloat(reserva.valorTotal).toFixed(2)}</li>
+        <li><strong>Código de Segurança:</strong> ${reserva.codigoSeguranca}</li>
+        <li><strong>Endereço:</strong> ${quadra.endereco || 'Não informado'}</li>
+      </ul>
+      <p>Você ainda pode cancelar até 2 horas antes se necessário.</p>
+    `;
+
+    return emailService.enviar(locatario.email, assunto, html);
+  },
+
+  /**
+   * Enviar lembrete de reserva - 1 hora antes
+   */
+  lembrar1HoraAntes: async (locatario, quadra, reserva) => {
+    const assunto = `🚨 URGENTE: ${quadra.nome} em 1 hora!`;
+    const dataInicio = new Date(reserva.dataInicio).toLocaleString('pt-BR');
+    const dataFim = new Date(reserva.dataFim).toLocaleString('pt-BR');
+    
+    const html = `
+      <h2>🚨 URGENTE: Sua Reserva Começa em 1 Hora!</h2>
+      <p>Olá ${locatario.nome},</p>
+      <p>Sua reserva começa <strong>em APENAS 1 HORA!</strong> Saia agora para não se atrasar!</p>
+      <ul>
+        <li><strong>Quadra:</strong> ${quadra.nome} (${quadra.esporte})</li>
+        <li><strong>Data/Hora:</strong> ${dataInicio} até ${dataFim}</li>
+        <li><strong>Valor:</strong> R$ ${parseFloat(reserva.valorTotal).toFixed(2)}</li>
+        <li><strong>Código de Segurança:</strong> ${reserva.codigoSeguranca}</li>
+        <li><strong>Endereço:</strong> ${quadra.endereco || 'Não informado'}</li>
+      </ul>
+      <p>🚫 <strong>Aviso:</strong> Cancelamentos são permitidos até 2 horas antes do horário.</p>
+    `;
+
+    return emailService.enviar(locatario.email, assunto, html);
+  },
+
+  /**
    * Enviar email genérico
    */
   enviar: async (para, assunto, html) => {
