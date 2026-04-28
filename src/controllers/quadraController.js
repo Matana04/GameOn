@@ -60,7 +60,7 @@ const quadraController = {
         where.quadraEsportes = {
           some: {
             esporte: {
-              nome: { contains: esporte, mode: 'insensitive' },
+              nome: { contains: esporte },
             },
           },
         };
@@ -461,9 +461,9 @@ const quadraController = {
 
       if (localizacao) {
         where.OR = [
-          { cidade: { contains: localizacao, mode: 'insensitive' } },
-          { estado: { contains: localizacao, mode: 'insensitive' } },
-          { endereco: { contains: localizacao, mode: 'insensitive' } }
+          { cidade: { contains: localizacao } },
+          { estado: { contains: localizacao } },
+          { endereco: { contains: localizacao } }
         ];
       }
 
@@ -474,7 +474,7 @@ const quadraController = {
       if (esporte) {
         where.quadraEsportes = {
           some: {
-            esporte: { nome: { contains: esporte, mode: 'insensitive' } }
+            esporte: { nome: { contains: esporte } }
           }
         };
       }
@@ -574,6 +574,7 @@ const quadraController = {
         quadras: quadrasFormatadas
       });
     } catch (error) {
+      console.log(error);
       res.status(500).json({ erro: 'Erro ao filtrar quadras', detalhes: error.message });
     }
   }

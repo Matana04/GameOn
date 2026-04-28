@@ -39,6 +39,9 @@ const usuarioController = {
       const novoUsuario = await usuarioModel.create({ nome, email, senha: senhaHash, tipo });
       res.status(201).json(sanitizeUsuario(novoUsuario));
     } catch (error) {
+      if (error.code === 'P2002') {
+        return res.status(400).json({ erro: 'Usuário já cadastrado.' });
+      }
       res.status(400).json({ erro: 'Erro ao criar usuário.', detalhes: error.message });
     }
   },
