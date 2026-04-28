@@ -15,19 +15,16 @@ function parseDateUTC3(s) {
 }
 
 const reservaController = {
-  // Listar todas as reservas do usuário autenticado
   list: async (req, res) => {
     try {
       let reservas;
       
-      // Locador vê suas reservas recebidas e locatário vê suas reservas feitas
       if (req.user.tipo === 'LOCADOR') {
         reservas = await reservaModel.findByLocador(req.user.id);
       } else {
         reservas = await reservaModel.findByLocatario(req.user.id);
       }
       
-      // Filtrar códigos de segurança baseado em permissões
       const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
         reservas,
         req.user.id,
@@ -44,7 +41,6 @@ const reservaController = {
     }
   },
 
-  // Buscar disponibilidades de uma quadra em um período
   getAvailability: async (req, res) => {
     const { quadraId, dataInicio, dataFim } = req.query;
 
@@ -55,8 +51,8 @@ const reservaController = {
     }
 
     try {
-      const dataInicioObj = new Date(dataInicio);
-      const dataFimObj = new Date(dataFim);
+      const dataInicioObj = parseDateUTC3(dataInicio);
+      const dataFimObj = parseDateUTC3(dataFim);
 
       if (isNaN(dataInicioObj.getTime()) || isNaN(dataFimObj.getTime())) {
         return res.status(400).json({ erro: 'Formato de data inválido' });
@@ -74,6 +70,43 @@ const reservaController = {
       const horariosOK = validarHorariosFuncionamento(quadra, dataInicioObj, dataFimObj);
       if (!horariosOK.valido) {
         return res.status(400).json({ erro: horariosOK.erro });
+      }
+
+      const bloqueioQuadra = await prisma.bloqueioQuadra.findFirst({
+        where: {
+          quadraId: Number(quadraId),
+          AND: [
+            { dataInicio: { lte: dataFimObj } },
+            { dataFim: { gte: dataInicioObj } }
+          ]
+        }
+      });
+
+      if (bloqueioQuadra) {
+        return res.json({
+          disponivel: false,
+          motivo: 'Quadra bloqueada',
+          quadra: {
+            id: quadra.id,
+            nome: quadra.nome,
+            esporte: quadra.esporte,
+            valorPorHora: quadra.valorPorHora
+          },
+          periodo: {
+            dataInicio: dataInicioObj,
+            dataFim: dataFimObj,
+            duracao: `${(dataFimObj - dataInicioObj) / 3600000} horas`
+          },
+          bloqueio: {
+            id: bloqueioQuadra.id,
+            motivo: bloqueioQuadra.motivo,
+            descricao: bloqueioQuadra.descricao,
+            dataInicio: bloqueioQuadra.dataInicio,
+            dataFim: bloqueioQuadra.dataFim,
+            horaInicio: bloqueioQuadra.horaInicio,
+            horaFim: bloqueioQuadra.horaFim
+          }
+        });
       }
 
       const availability = await reservaModel.findAvailability(Number(quadraId), dataInicioObj, dataFimObj);
@@ -142,11 +175,34 @@ const reservaController = {
         return res.status(403).json({ erro: 'Você está bloqueado pelo locador desta quadra e não pode realizar reservas' });
       }
 
-      const dataInicioLocal = new Date(dataInicio);
-      const dataFimLocal = new Date(dataFim);
-      const horariosOK = validarHorariosFuncionamento(quadra, dataInicioLocal, dataFimLocal);
+      const horariosOK = validarHorariosFuncionamento(quadra, dataInicioObj, dataFimObj);
       if (!horariosOK.valido) {
         return res.status(400).json({ erro: horariosOK.erro });
+      }
+
+      const bloqueioQuadra = await prisma.bloqueioQuadra.findFirst({
+        where: {
+          quadraId: Number(quadraId),
+          AND: [
+            { dataInicio: { lte: dataFimObj } },
+            { dataFim: { gte: dataInicioObj } }
+          ]
+        }
+      });
+
+      if (bloqueioQuadra) {
+        return res.status(409).json({
+          erro: 'A quadra está bloqueada neste período',
+          bloqueio: {
+            id: bloqueioQuadra.id,
+            motivo: bloqueioQuadra.motivo,
+            descricao: bloqueioQuadra.descricao,
+            dataInicio: bloqueioQuadra.dataInicio,
+            dataFim: bloqueioQuadra.dataFim,
+            horaInicio: bloqueioQuadra.horaInicio,
+            horaFim: bloqueioQuadra.horaFim
+          }
+        });
       }
 
       const conflitos = await reservaModel.findConflicts(Number(quadraId), dataInicioObj, dataFimObj);
@@ -159,7 +215,7 @@ const reservaController = {
             dataFimObj
           );
 
-          const duracao = (dataFimLocal - dataInicioLocal) / 3600000; // Em horas
+          const duracao = (dataFimObj - dataInicioObj) / 3600000;
           if (duracao <= 0 || duracao > 24) {
             return res.status(400).json({ erro: 'Duração deve estar entre 0 e 24 horas' });
           }
@@ -168,6 +224,7 @@ const reservaController = {
 
           const codigoSegurancaFila = securityService.gerarCodigoSeguranca();
 
+          // Criar reserva com status EM_FILA
           const novaReservaFila = await prisma.reserva.create({
             data: {
               quadraId: Number(quadraId),
@@ -201,7 +258,7 @@ const reservaController = {
               periodo: {
                 dataInicio: formatarISOLocal(reservaFila.dataInicio),
                 dataFim: formatarISOLocal(reservaFila.dataFim),
-                duracao: `${(dataFimLocal - dataInicioLocal) / 3600000} horas`
+                duracao: `${(dataFimObj - dataInicioObj) / 3600000} horas`
               },
               valorTotal: reservaFila.valorTotal,
               status: 'EM_FILA',
@@ -229,7 +286,7 @@ const reservaController = {
       }
 
 
-      const duracao = (dataFimLocal - dataInicioLocal) / 3600000;
+      const duracao = (dataFimObj - dataInicioObj) / 3600000;
       if (duracao <= 0 || duracao > 24) {
         return res.status(400).json({ erro: 'Duração deve estar entre 0 e 24 horas' });
       }
@@ -1192,9 +1249,9 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
       };
     }
 
-    if (dataAtual.getTime() === dataInicio.getTime()) {
-      const horaInicio = dataInicio.getHours() + ':' + String(dataInicio.getMinutes()).padStart(2, '0');
-      if (horaInicio < horario.horaAbertura) {
+    if (dataAtual.toDateString() === dataInicio.toDateString()) {
+      const horaInicio = String(dataInicio.getHours()).padStart(2, '0') + ':' + String(dataInicio.getMinutes()).padStart(2, '0');
+      if (compararHorarios(horaInicio, horario.horaAbertura) < 0) {
         return { 
           valido: false, 
           erro: `A quadra abre às ${horario.horaAbertura} no ${obterNomeDia(diaSemana)}` 
@@ -1202,9 +1259,9 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
       }
     }
 
-    if (dataAtual.getDate() === dataFim.getDate() && dataAtual.getMonth() === dataFim.getMonth()) {
-      const horaFim = dataFim.getHours() + ':' + String(dataFim.getMinutes()).padStart(2, '0');
-      if (horaFim > horario.horaFechamento) {
+    if (dataAtual.toDateString() === dataFim.toDateString()) {
+      const horaFim = String(dataFim.getHours()).padStart(2, '0') + ':' + String(dataFim.getMinutes()).padStart(2, '0');
+      if (compararHorarios(horaFim, horario.horaFechamento) > 0) {
         return { 
           valido: false, 
           erro: `A quadra fecha às ${horario.horaFechamento} no ${obterNomeDia(diaSemana)}` 
@@ -1216,6 +1273,18 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
   }
 
   return { valido: true };
+}
+
+function compararHorarios(hora1, hora2) {
+  const [h1, m1] = hora1.split(':').map(Number);
+  const [h2, m2] = hora2.split(':').map(Number);
+  
+  const minutos1 = h1 * 60 + m1;
+  const minutos2 = h2 * 60 + m2;
+  
+  if (minutos1 < minutos2) return -1;
+  if (minutos1 > minutos2) return 1;
+  return 0;
 }
 
 function obterNomeDia(dia) {
