@@ -81,6 +81,19 @@ const reservaModel = {
     orderBy: { dataInicio: 'desc' }
   }).then((reservas) => reservas.map(formatarReserva)),
 
+  // Buscar histórico de reservas do locatário
+  findHistoricoByLocatario: async (locatarioId) => prisma.reserva.findMany({
+    where: {
+      locatarioId: Number(locatarioId),
+      status: { not: 'EM_FILA' }
+    },
+    include: {
+      quadra: { include: { quadraEsportes: { include: { esporte: true } } } },
+      locatario: true
+    },
+    orderBy: { dataInicio: 'desc' }
+  }).then((reservas) => reservas.map(formatarReserva)),
+
   // Buscar reservas do locatário
   findByLocatario: async (locatarioId) => prisma.reserva.findMany({
     where: { locatarioId: Number(locatarioId) },

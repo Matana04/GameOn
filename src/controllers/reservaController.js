@@ -795,6 +795,43 @@ const reservaController = {
     }
   },
 
+  // Histórico de reservas do locatário autenticado
+  getHistoricoLocatario: async (req, res) => {
+    try {
+      if (req.user.tipo !== 'LOCATARIO') {
+        return res.status(403).json({ erro: 'Apenas locatários podem acessar esse histórico' });
+      }
+
+      const reservas = await reservaModel.findHistoricoByLocatario(req.user.id);
+
+      const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
+        reservas,
+        req.user.id,
+        'LOCATARIO'
+      );
+
+      res.json({
+        totalReservas: reservasComSeguranca.length,
+        historico: reservasComSeguranca.map(r => ({
+          id: r.id,
+          quadra: {
+            id: r.quadra.id,
+            nome: r.quadra.nome,
+            esporte: r.quadra.esporte
+          },
+          dataInicio: formatarISOLocal(r.dataInicio),
+          dataFim: formatarISOLocal(r.dataFim),
+          diaReserva: formatarISOLocal(r.dataInicio).split('T')[0],
+          valorTotal: r.valorTotal,
+          status: r.status,
+          codigoSeguranca: r.codigoSeguranca
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ erro: 'Erro ao buscar histórico do locatário', detalhes: error.message });
+    }
+  },
+
   // Timer da próxima reserva do locatário (melhor prática: usa token)
   proximaReserva: async (req, res) => {
     try {

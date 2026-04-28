@@ -453,6 +453,7 @@ router.get('/quadra/:quadraId/clientes', reservaController.getClientesByQuadra);
  *         description: Apenas locadores podem acessar esse histórico
  */
 router.get('/locador/historico', reservaController.getHistoricoLocador);
+router.get('/locatario/historico', reservaController.getHistoricoLocatario);
 router.get('/locador/:locadorId/clientes', reservaController.getClientesByLocador);
 
 /**
