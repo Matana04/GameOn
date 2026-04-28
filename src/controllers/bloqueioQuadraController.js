@@ -48,7 +48,7 @@ const bloqueioQuadraController = {
       }
 
       // Verificar se a quadra pertence ao locador
-      const quadra = await quadraModel.buscarPorId(quadraId);
+      const quadra = await quadraModel.findById(quadraId);
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
@@ -109,7 +109,7 @@ const bloqueioQuadraController = {
 
     try {
       // Verificar se a quadra pertence ao locador
-      const quadra = await quadraModel.buscarPorId(quadraId);
+      const quadra = await quadraModel.findById(quadraId);
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }

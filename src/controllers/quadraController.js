@@ -374,6 +374,12 @@ const quadraController = {
               dataInicio: { lt: fimDiaUTC },
               dataFim: { gt: inicioDiaUTC }
             }
+          },
+          bloqueios: {
+            where: {
+              dataInicio: { lt: fimDiaUTC },
+              dataFim: { gt: inicioDiaUTC }
+            }
           }
         }
       });
@@ -409,7 +415,9 @@ const quadraController = {
           const [sfH, sfM] = slot.fim.split(':').map(Number);
           const slotInicioUTC = new Date(Date.UTC(year, month - 1, day, siH + 3, siM, 0));
           const slotFimUTC = new Date(Date.UTC(year, month - 1, day, sfH + 3, sfM, 0));
-          return !quadra.reservas.some(r => r.dataInicio < slotFimUTC && r.dataFim > slotInicioUTC);
+          const reservaConflito = quadra.reservas.some(r => r.dataInicio < slotFimUTC && r.dataFim > slotInicioUTC);
+          const bloqueioConflito = quadra.bloqueios.some(b => b.dataInicio < slotFimUTC && b.dataFim > slotInicioUTC);
+          return !reservaConflito && !bloqueioConflito;
         });
 
         return {
