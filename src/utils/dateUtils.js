@@ -13,7 +13,6 @@ const TIMEZONE_OFFSET_MINUTES = -180; // UTC-3 em minutos
  */
 function converterParaUTC(isoString) {
   const data = new Date(isoString);
-  // Corrigir o offset timezone
   const offsetMs = TIMEZONE_OFFSET_MINUTES * 60 * 1000;
   const utcData = new Date(data.getTime() - offsetMs);
   return utcData;

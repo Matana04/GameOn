@@ -10,7 +10,6 @@ async function processarLembretesReservas() {
   try {
     const agora = new Date();
 
-    // Buscar todas as reservas confirmadas (RESERVADO) que não foram canceladas
     const reservas = await prisma.reserva.findMany({
       where: {
         status: 'RESERVADO'
@@ -28,10 +27,10 @@ async function processarLembretesReservas() {
       const diferenca = dataInicio.getTime() - agora.getTime();
       const horasAte = diferenca / (1000 * 60 * 60);
 
-      // Lembretes desativados temporariamente - campos foram removidos do modelo
+      // Lembretes desativados temporariamente
       // 1 dia antes (24 horas)
       // if (horasAte <= 24 && horasAte > 23.5 && !reserva.lembreteUmDiaEnviado) {
-      //   console.log(`📅 Enviando lembrete 1 dia antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
+      //   console.log(`Enviando lembrete 1 dia antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
       //   await emailService.lembrar1DiaAntes(reserva.locatario, reserva.quadra, reserva);
       //   await prisma.reserva.update({
       //     where: { id: reserva.id },
@@ -41,7 +40,7 @@ async function processarLembretesReservas() {
 
       // 6 horas antes
       // if (horasAte <= 6 && horasAte > 5.5 && !reserva.lembrete6HorasEnviado) {
-      //   console.log(`⚠️ Enviando lembrete 6 horas antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
+      //   console.log(`Enviando lembrete 6 horas antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
       //   await emailService.lembrar6HorasAntes(reserva.locatario, reserva.quadra, reserva);
       //   await prisma.reserva.update({
       //     where: { id: reserva.id },
@@ -51,7 +50,7 @@ async function processarLembretesReservas() {
 
       // 3 horas antes
       // if (horasAte <= 3 && horasAte > 2.5 && !reserva.lembrete3HorasEnviado) {
-      //   console.log(`⏳ Enviando lembrete 3 horas antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
+      //   console.log(`Enviando lembrete 3 horas antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
       //   await emailService.lembrar3HorasAntes(reserva.locatario, reserva.quadra, reserva);
       //   await prisma.reserva.update({
       //     where: { id: reserva.id },
@@ -61,7 +60,7 @@ async function processarLembretesReservas() {
 
       // 1 hora antes
       // if (horasAte <= 1 && horasAte > 0.5 && !reserva.lembrete1HoraEnviado) {
-      //   console.log(`🚨 Enviando lembrete 1 hora antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
+      //   console.log(`Enviando lembrete 1 hora antes para ${reserva.locatario.nome} - ${reserva.quadra.nome}`);
       //   await emailService.lembrar1HoraAntes(reserva.locatario, reserva.quadra, reserva);
       //   await prisma.reserva.update({
       //     where: { id: reserva.id },
@@ -83,25 +82,25 @@ function iniciarCronJobs() {
   // Executar a cada 1 hora: processar ofertas expiradas
   // Cron expression: 0 * * * * (toda hora cheia)
   cron.schedule('0 * * * *', async () => {
-    console.log('\n⏰ Executando verificação de ofertas expiradas...');
+    console.log('\nExecutando verificação de ofertas expiradas...');
     await filaService.processarOfertasExpiradas();
   });
 
   // Executar a cada 15 minutos: processar lembretes de reservas
   // Cron expression: */15 * * * * (a cada 15 minutos)
   cron.schedule('*/15 * * * *', async () => {
-    console.log('\n📧 Executando verificação de lembretes...');
+    console.log('\nExecutando verificação de lembretes...');
     await processarLembretesReservas();
   });
 
   // Alternativa: executar a cada 30 minutos
   // Descomentar se quiser verificacao mais frequente
   // cron.schedule('*/30 * * * *', async () => {
-  //   console.log('\n⏰ Executando verificacao de ofertas expiradas (30 min)...');
+  //   console.log('\nExecutando verificacao de ofertas expiradas (30 min)...');
   //   await filaService.processarOfertasExpiradas();
   // });
 
-  console.log('✅ Cron jobs iniciados com sucesso!');
+  console.log('Cron jobs iniciados com sucesso!');
 }
 
 /**

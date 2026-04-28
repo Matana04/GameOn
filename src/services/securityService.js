@@ -69,7 +69,6 @@ function filtrarCodigosSeguranca(reservas, usuarioId, tipoUsuario) {
   const resultado = listaReservas.map(reserva => {
     const temPermissao = temPermissaoVerCodigoSeguranca(reserva, usuarioId, tipoUsuario);
     
-    // Se não tem permissão, remove o código da resposta
     if (!temPermissao) {
       const { codigoSeguranca, ...reservaSemCodigo } = reserva;
       return reservaSemCodigo;

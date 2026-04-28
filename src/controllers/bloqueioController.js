@@ -25,17 +25,14 @@ const bloqueioController = {
         return res.status(409).json({ erro: 'Locatário já está bloqueado' });
       }
 
-      // Criar bloqueio
       await bloqueioModel.criar(locadorId, locatarioId);
 
-      // Buscar quadras do locador
       const quadrasLocador = await prisma.quadra.findMany({
         where: { locadorId },
         select: { id: true },
       });
       const idsQuadras = quadrasLocador.map(q => q.id);
 
-      // Cancelar todas as reservas ativas do locatário nessas quadras
       const reservasCanceladas = await prisma.reserva.updateMany({
         where: {
           locatarioId: Number(locatarioId),
@@ -45,7 +42,6 @@ const bloqueioController = {
         data: { status: 'CANCELADO' },
       });
 
-      // Notificar locatário por email
       emailService.enviar(
         locatario.email,
         'Acesso bloqueado pelo locador',

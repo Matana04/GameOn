@@ -1,7 +1,6 @@
 const prisma = require('../database/prismaClient');
 
 const bloqueioQuadraModel = {
-  // Criar um bloqueio
   criar: async (bloqueio) =>
     prisma.bloqueioQuadra.create({
       data: {
@@ -16,14 +15,12 @@ const bloqueioQuadraModel = {
       include: { quadra: true },
     }),
 
-  // Buscar bloqueio por ID
   buscarPorId: async (id) =>
     prisma.bloqueioQuadra.findUnique({
       where: { id: Number(id) },
       include: { quadra: true },
     }),
 
-  // Listar bloqueios de uma quadra
   listarPorQuadra: async (quadraId, filtros = {}) => {
     const where = { quadraId: Number(quadraId) };
 
@@ -41,7 +38,6 @@ const bloqueioQuadraModel = {
     });
   },
 
-  // Listar bloqueios de um locador (todas as quadras)
   listarPorLocador: async (locadorId) =>
     prisma.bloqueioQuadra.findMany({
       where: {
@@ -51,7 +47,6 @@ const bloqueioQuadraModel = {
       include: { quadra: true },
     }),
 
-  // Atualizar bloqueio
   atualizar: async (id, dados) =>
     prisma.bloqueioQuadra.update({
       where: { id: Number(id) },
@@ -66,13 +61,11 @@ const bloqueioQuadraModel = {
       include: { quadra: true },
     }),
 
-  // Deletar bloqueio
   deletar: async (id) =>
     prisma.bloqueioQuadra.delete({
       where: { id: Number(id) },
     }),
 
-  // Verificar se há conflito com bloqueios existentes
   verificarConflito: async (quadraId, dataInicio, dataFim, horaInicio = null, horaFim = null) => {
     const where = {
       quadraId: Number(quadraId),
@@ -82,11 +75,10 @@ const bloqueioQuadraModel = {
       ],
     };
 
-    // Se for bloqueio parcial (com horário), verifica conflito de horário também
     if (horaInicio && horaFim) {
       where.AND.push({
         OR: [
-          { horaInicio: null, horaFim: null }, // Bloqueia todo dia
+          { horaInicio: null, horaFim: null },
           {
             AND: [
               { horaInicio: { lte: horaFim } },
@@ -100,7 +92,6 @@ const bloqueioQuadraModel = {
     return prisma.bloqueioQuadra.findFirst({ where });
   },
 
-  // Buscar bloqueios que afetam uma data/hora específica
   buscarBloqueiosNoPeríodo: async (quadraId, dataInicio, dataFim) =>
     prisma.bloqueioQuadra.findMany({
       where: {

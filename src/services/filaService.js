@@ -21,7 +21,6 @@ const filaService = {
       throw new Error(`Não é possível entrar em fila. A reserva deve ser com pelo menos ${horasMinimas}h de antecedência.`);
     }
 
-    // Buscar conflitos
     const conflitos = await prisma.reserva.findMany({
       where: {
         quadraId: Number(quadraId),
@@ -55,7 +54,6 @@ const filaService = {
       const dataInicioDate = new Date(reserva.dataInicio);
       const dataFimDate = new Date(reserva.dataFim);
 
-      // Contar quantas reservas estão em fila para a mesma quadra/horário
       const contagemFila = await prisma.reserva.count({
         where: {
           quadraId: reserva.quadraId,
@@ -66,9 +64,8 @@ const filaService = {
       });
 
       const proximoPosicao = contagemFila + 1;
-      console.log(`\n📊 Fila: Contagem=${contagemFila}, Próxima posição=${proximoPosicao}`);
+      console.log(`\nFila: Contagem=${contagemFila}, Próxima posição=${proximoPosicao}`);
 
-      // Atualizar reserva com status EM_FILA
       const reservaAtualizada = await prisma.reserva.update({
         where: { id: reserva.id },
         data: {
@@ -81,7 +78,6 @@ const filaService = {
         }
       });
 
-      // Enviar notificações
       await emailService.notificarLocatarioEntFila(
         reservaAtualizada.locatario,
         reservaAtualizada.quadra,
@@ -94,7 +90,6 @@ const filaService = {
         proximoPosicao
       );
 
-      console.log(`✅ ${reservaAtualizada.locatario.nome} adicionado à fila na posição ${proximoPosicao}`);
       return reservaAtualizada;
     } catch (error) {
       console.error('Erro ao adicionar reserva à fila:', error);
@@ -112,7 +107,6 @@ const filaService = {
 
       console.log(`\n📋 Buscando fila para: quadra=${quadraId}, inicio=${dataInicioDate.toISOString()}, fim=${dataFimDate.toISOString()}`);
 
-      // Buscar TODAS as reservas em fila para esta quadra e horário
       const todasEmFila = await prisma.reserva.findMany({
         where: {
           quadraId: Number(quadraId),
@@ -125,9 +119,8 @@ const filaService = {
         orderBy: { posicaoFila: 'asc' }
       });
 
-      console.log(`✓ Total em fila: ${todasEmFila.length}`);
+      console.log(`Total em fila: ${todasEmFila.length}`);
 
-      // Filtrar pelo horário (comparação manual para evitar problemas de timezone)
       const filaDoHorario = todasEmFila.filter(r => {
         const inicioIgual = r.dataInicio.getTime() === dataInicioDate.getTime();
         const fimIgual = r.dataFim.getTime() === dataFimDate.getTime();
@@ -135,24 +128,21 @@ const filaService = {
         return inicioIgual && fimIgual;
       });
 
-      console.log(`✓ Na fila deste horário: ${filaDoHorario.length}`);
+      console.log(`Na fila deste horário: ${filaDoHorario.length}`);
 
       if (filaDoHorario.length === 0) {
-        console.log('ℹ️ Nenhuma reserva em fila para este horário');
+        console.log('Nenhuma reserva em fila para este horário');
         return null;
       }
 
-      // Pegar o primeiro (posição 1)
       const primeiroFila = filaDoHorario[0];
-      console.log(`🎯 Primeiro da fila: ${primeiroFila.locatario.nome} (posição ${primeiroFila.posicaoFila})`);
 
-      // Oferecer ao primeiro da fila
       const reservaOfertada = await prisma.reserva.update({
         where: { id: primeiroFila.id },
         data: {
           status: 'OFERECIDO_LOCATARIO',
           dataOferta: new Date(),
-          posicaoFila: null // Remove da fila
+          posicaoFila: null
         },
         include: {
           quadra: { include: { locador: true } },
@@ -160,20 +150,18 @@ const filaService = {
         }
       });
 
-      // Atualizar posições da fila
       await filaService.reorganizarFila(quadraId, dataInicio, dataFim);
 
-      // Enviar notificação ao locatário
       await emailService.oferecerHorarioLocatario(
         reservaOfertada.locatario,
         reservaOfertada.quadra,
         reservaOfertada
       );
 
-      console.log(`✅ Oferta enviada para: ${reservaOfertada.locatario.nome}`);
+      console.log(`Oferta enviada para: ${reservaOfertada.locatario.nome}`);
       return reservaOfertada;
     } catch (error) {
-      console.error('❌ Erro ao processar próxima fila:', error);
+      console.error('Erro ao processar próxima fila:', error);
       throw error;
     }
   },
@@ -186,7 +174,6 @@ const filaService = {
       const dataInicioDate = new Date(dataInicio);
       const dataFimDate = new Date(dataFim);
 
-      // Buscar todas as reservas em fila para esta quadra
       const todasEmFila = await prisma.reserva.findMany({
         where: {
           quadraId: Number(quadraId),
@@ -195,15 +182,12 @@ const filaService = {
         orderBy: { createdAt: 'asc' }
       });
 
-      // Filtrar pelo horário
       const filaDoHorario = todasEmFila.filter(r => {
         return r.dataInicio.getTime() === dataInicioDate.getTime() &&
                r.dataFim.getTime() === dataFimDate.getTime();
       });
 
-      console.log(`🔄 Reorganizando fila: ${filaDoHorario.length} reservas`);
 
-      // Atualizar posições
       for (let i = 0; i < filaDoHorario.length; i++) {
         await prisma.reserva.update({
           where: { id: filaDoHorario[i].id },
@@ -212,7 +196,6 @@ const filaService = {
         console.log(`  └─ ${i + 1}. Posição atualizada`);
       }
 
-      console.log(`✅ Fila reorganizada: ${filaDoHorario.length} reservas restantes\n`);
       return filaDoHorario.length;
     } catch (error) {
       console.error('Erro ao reorganizar fila:', error);
@@ -246,20 +229,17 @@ const filaService = {
         throw new Error(`Status inválido para confirmação: ${reserva.status}`);
       }
 
-      // Verificar se já passou das 12 horas
       const horasPassadas = (new Date() - reserva.dataOferta) / (1000 * 60 * 60);
       if (horasPassadas > 12) {
-        // Remover e oferecer ao próximo
         await filaService.removerOfertaExpirada(reserva);
         throw new Error('Prazo de 12 horas expirou. A oferta foi passada para o próximo da fila.');
       }
 
-      // Mudar status para AGUARDANDO_APROVACAO
       const reservaConfirmada = await prisma.reserva.update({
         where: { id: Number(reservaId) },
         data: {
           status: 'AGUARDANDO_APROVACAO',
-          dataOferta: null // Limpar data de oferta
+          dataOferta: null
         },
         include: {
           quadra: { include: { locador: true } },
@@ -267,7 +247,6 @@ const filaService = {
         }
       });
 
-      // Notificar locador
       await emailService.notificarLocadorOfertaPendente(
         reservaConfirmada.quadra.locador,
         reservaConfirmada.quadra,
@@ -287,25 +266,20 @@ const filaService = {
    */
   removerOfertaExpirada: async (reserva) => {
     try {
-      // Deletar reserva expirada
       await prisma.reserva.delete({
         where: { id: reserva.id }
       });
 
-      // Notificar locatário que foi removido
       await emailService.notificarRemocaoFilaPorTimeout(
         reserva.locatario,
         reserva.quadra
       );
 
-      // Oferecer próximo da fila
       const proximoOfertado = await filaService.processarProximaFila(
         reserva.quadraId,
         reserva.dataInicio,
         reserva.dataFim
       );
-
-      console.log(`✅ Oferta expirada removida. Próximo da fila: ${proximoOfertado ? proximoOfertado.id : 'nenhum'}`);
 
       return proximoOfertado;
     } catch (error) {
@@ -349,17 +323,17 @@ const filaService = {
       const expiradas = await filaService.buscarOfertasExpiradas();
       
       if (expiradas.length === 0) {
-        console.log('✅ Nenhuma oferta expirada para processar');
+        console.log('Nenhuma oferta expirada para processar');
         return;
       }
 
-      console.log(`⏳ Processando ${expiradas.length} oferta(s) expirada(s)...`);
+      console.log(`Processando ${expiradas.length} oferta(s) expirada(s)...`);
 
       for (const reserva of expiradas) {
         await filaService.removerOfertaExpirada(reserva);
       }
 
-      console.log(`✅ ${expiradas.length} oferta(s) processada(s)`);
+      console.log(`${expiradas.length} oferta(s) processada(s)`);
     } catch (error) {
       console.error('Erro ao processar ofertas expiradas:', error);
     }

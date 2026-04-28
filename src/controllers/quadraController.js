@@ -94,6 +94,8 @@ const quadraController = {
       cidade,
       estado,
       cep,
+      latitude,
+      longitude,
       horarios,
       imagemBlob,
       imagemMimeType,
@@ -126,6 +128,8 @@ const quadraController = {
             cidade,
             estado,
             cep,
+            latitude: latitude !== undefined && latitude !== null ? parseFloat(latitude) : null,
+            longitude: longitude !== undefined && longitude !== null ? parseFloat(longitude) : null,
             horasAntecedenciaCancelamento: horasAntecedenciaCancelamento !== undefined ? Number(horasAntecedenciaCancelamento) : 6,
             requerAprovacao: requerAprovacao !== undefined ? parseBooleanValue(requerAprovacao, true) : true,
             locadorId: Number(locadorId)
@@ -195,6 +199,8 @@ const quadraController = {
       cidade,
       estado,
       cep,
+      latitude,
+      longitude,
       horarios,
       imagemBlob,
       imagemMimeType,
@@ -239,6 +245,8 @@ const quadraController = {
       if (cidade !== undefined) updateData.cidade = cidade;
       if (estado !== undefined) updateData.estado = estado;
       if (cep !== undefined) updateData.cep = cep;
+      if (latitude !== undefined) updateData.latitude = latitude !== null ? parseFloat(latitude) : null;
+      if (longitude !== undefined) updateData.longitude = longitude !== null ? parseFloat(longitude) : null;
       if (horasAntecedenciaCancelamento !== undefined) updateData.horasAntecedenciaCancelamento = Number(horasAntecedenciaCancelamento);
       if (requerAprovacao !== undefined) updateData.requerAprovacao = requerAprovacaoNovo;
 
@@ -395,6 +403,8 @@ const quadraController = {
           esporteIds: quadraBase.esporteIds,
           valorPorHora: quadraBase.valorPorHora,
           imagem: quadraBase.imagem,
+          latitude: quadraBase.latitude ?? null,
+          longitude: quadraBase.longitude ?? null,
           locador: quadra.locador.nome,
           data,
           diaSemana: obterNomeDia(diaSemana),
@@ -541,6 +551,8 @@ const quadraController = {
           cidade: quadraBase.cidade,
           estado: quadraBase.estado,
           cep: quadraBase.cep,
+          latitude: quadraBase.latitude ?? null,
+          longitude: quadraBase.longitude ?? null,
           horasAntecedenciaCancelamento: quadraBase.horasAntecedenciaCancelamento,
           requerAprovacao: quadraBase.requerAprovacao,
           locador: quadra.locador,

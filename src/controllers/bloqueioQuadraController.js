@@ -4,20 +4,17 @@ const quadraModel = require('../models/quadraModel');
 const reservaModel = require('../models/reservaModel');
 
 const bloqueioQuadraController = {
-  // Criar bloqueio de quadra
   criar: async (req, res) => {
     const locadorId = req.user.id;
     const { quadraId, dataInicio, dataFim, motivo, descricao, horaInicio, horaFim } = req.body;
 
     try {
-      // Validar campos obrigatórios
       if (!quadraId || !dataInicio || !dataFim || !motivo) {
         return res.status(400).json({
           erro: 'Campos obrigatórios: quadraId, dataInicio, dataFim, motivo',
         });
       }
 
-      // Validar formato de datas
       const inicio = new Date(dataInicio);
       const fim = new Date(dataFim);
 
@@ -31,7 +28,6 @@ const bloqueioQuadraController = {
         });
       }
 
-      // Validar horários se fornecidos
       if (horaInicio && horaFim) {
         const regexHora = /^([0-1]\d|2[0-3]):[0-5]\d$/;
         if (!regexHora.test(horaInicio) || !regexHora.test(horaFim)) {
@@ -47,7 +43,6 @@ const bloqueioQuadraController = {
         }
       }
 
-      // Verificar se a quadra pertence ao locador
       const quadra = await quadraModel.findById(quadraId);
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
@@ -59,7 +54,6 @@ const bloqueioQuadraController = {
         });
       }
 
-      // Criar o bloqueio
       const bloqueio = await bloqueioQuadraModel.criar({
         quadraId,
         dataInicio,
@@ -70,7 +64,6 @@ const bloqueioQuadraController = {
         horaFim,
       });
 
-      // Cancelar reservas que conflitam com o bloqueio
       const reservasParaCancelar = await prisma.reserva.findMany({
         where: {
           quadraId: Number(quadraId),
@@ -102,13 +95,11 @@ const bloqueioQuadraController = {
     }
   },
 
-  // Listar bloqueios de uma quadra
   listarPorQuadra: async (req, res) => {
     const { quadraId } = req.params;
     const locadorId = req.user.id;
 
     try {
-      // Verificar se a quadra pertence ao locador
       const quadra = await quadraModel.findById(quadraId);
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
@@ -145,7 +136,6 @@ const bloqueioQuadraController = {
     }
   },
 
-  // Listar bloqueios de todas as quadras do locador
   listarMeus: async (req, res) => {
     const locadorId = req.user.id;
 
@@ -185,7 +175,6 @@ const bloqueioQuadraController = {
     }
   },
 
-  // Obter detalhes de um bloqueio
   obter: async (req, res) => {
     const { bloqueioId } = req.params;
     const locadorId = req.user.id;
@@ -212,7 +201,6 @@ const bloqueioQuadraController = {
     }
   },
 
-  // Atualizar bloqueio
   atualizar: async (req, res) => {
     const { bloqueioId } = req.params;
     const locadorId = req.user.id;
@@ -231,7 +219,6 @@ const bloqueioQuadraController = {
         });
       }
 
-      // Validar datas se fornecidas
       if (dataInicio && dataFim) {
         const inicio = new Date(dataInicio);
         const fim = new Date(dataFim);
@@ -243,7 +230,6 @@ const bloqueioQuadraController = {
         }
       }
 
-      // Validar horários se fornecidos
       if (horaInicio && horaFim) {
         const regexHora = /^([0-1]\d|2[0-3]):[0-5]\d$/;
         if (!regexHora.test(horaInicio) || !regexHora.test(horaFim)) {
@@ -280,7 +266,6 @@ const bloqueioQuadraController = {
     }
   },
 
-  // Deletar bloqueio
   deletar: async (req, res) => {
     const { bloqueioId } = req.params;
     const locadorId = req.user.id;
@@ -311,7 +296,6 @@ const bloqueioQuadraController = {
     }
   },
 
-  // Verificar disponibilidade de uma quadra em um período
   verificarDisponibilidade: async (req, res) => {
     const { quadraId } = req.params;
     const { dataInicio, dataFim } = req.query;

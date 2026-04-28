@@ -66,19 +66,16 @@ const reservaController = {
         return res.status(400).json({ erro: 'Data de início deve ser menor que data de fim' });
       }
 
-      // Buscar quadra
       const quadra = await quadraModel.findById(quadraId);
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
 
-      // Verificar horários de funcionamento
       const horariosOK = validarHorariosFuncionamento(quadra, dataInicioObj, dataFimObj);
       if (!horariosOK.valido) {
         return res.status(400).json({ erro: horariosOK.erro });
       }
 
-      // Buscar disponibilidade
       const availability = await reservaModel.findAvailability(Number(quadraId), dataInicioObj, dataFimObj);
       
       res.json({
@@ -106,12 +103,10 @@ const reservaController = {
     }
   },
 
-  // Criar nova reserva
   create: async (req, res) => {
     const { quadraId, dataInicio, dataFim } = req.body;
     const locatarioId = req.user.id;
 
-    // Validações básicas
     if (!quadraId || !dataInicio || !dataFim) {
       return res.status(400).json({ erro: 'Campos obrigatórios: quadraId, dataInicio, dataFim' });
     }
@@ -121,39 +116,32 @@ const reservaController = {
     }
 
     try {
-      // Parsear datas assumindo UTC-3 quando não há timezone explícito na string
       const dataInicioObj = parseDateUTC3(dataInicio);
       const dataFimObj = parseDateUTC3(dataFim);
 
-      // Validar formato de data
       if (isNaN(dataInicioObj.getTime()) || isNaN(dataFimObj.getTime())) {
         return res.status(400).json({ erro: 'Formato de data inválido' });
       }
 
-      // Validar ordenação de datas
       if (dataInicioObj >= dataFimObj) {
         return res.status(400).json({ erro: 'Data de início deve ser anterior à data de fim' });
       }
 
-      // Validar se a reserva é no futuro (convertendo data atual para timezone local)
       const agora = new Date();
       if (dataInicioObj < agora) {
         return res.status(400).json({ erro: 'Não é possível fazer reservas no passado' });
       }
 
-      // Buscar quadra
       const quadra = await quadraModel.findById(quadraId);
       if (!quadra) {
         return res.status(404).json({ erro: 'Quadra não encontrada' });
       }
 
-      // Verificar se o locatário está bloqueado pelo locador desta quadra
       const bloqueio = await bloqueioModel.buscar(quadra.locadorId, locatarioId);
       if (bloqueio) {
         return res.status(403).json({ erro: 'Você está bloqueado pelo locador desta quadra e não pode realizar reservas' });
       }
 
-      // Validar horários de funcionamento (usar datas locais para validação)
       const dataInicioLocal = new Date(dataInicio);
       const dataFimLocal = new Date(dataFim);
       const horariosOK = validarHorariosFuncionamento(quadra, dataInicioLocal, dataFimLocal);
@@ -161,11 +149,9 @@ const reservaController = {
         return res.status(400).json({ erro: horariosOK.erro });
       }
 
-      // Validar conflitos de reserva
       const conflitos = await reservaModel.findConflicts(Number(quadraId), dataInicioObj, dataFimObj);
       
       if (conflitos.length > 0) {
-        // Há conflito - tentar adicionar à fila
         try {
           const eligibilidade = await filaService.verificarEligibilidadeFila(
             Number(quadraId),
@@ -173,7 +159,6 @@ const reservaController = {
             dataFimObj
           );
 
-          // Calcular valor total
           const duracao = (dataFimLocal - dataInicioLocal) / 3600000; // Em horas
           if (duracao <= 0 || duracao > 24) {
             return res.status(400).json({ erro: 'Duração deve estar entre 0 e 24 horas' });
@@ -181,10 +166,8 @@ const reservaController = {
 
           const valorTotal = parseFloat(quadra.valorPorHora) * duracao;
 
-          // Gerar código de segurança para reserva em fila também
           const codigoSegurancaFila = securityService.gerarCodigoSeguranca();
 
-          // Criar reserva com status EM_FILA
           const novaReservaFila = await prisma.reserva.create({
             data: {
               quadraId: Number(quadraId),
@@ -202,7 +185,6 @@ const reservaController = {
             }
           });
 
-          // Adicionar à fila (vai gerar email)
           const reservaFila = await filaService.adicionarFila(novaReservaFila);
 
           return res.status(202).json({
@@ -234,7 +216,6 @@ const reservaController = {
             }
           });
         } catch (erroFila) {
-          // Não está elegível para fila (menos de 6 horas antes)
           return res.status(409).json({ 
             erro: erroFila.message || 'A quadra já possui reserva neste período',
             conflitosExistentes: conflitos.map(c => ({
@@ -248,20 +229,17 @@ const reservaController = {
       }
 
 
-      // Calcular valor total
-      const duracao = (dataFimLocal - dataInicioLocal) / 3600000; // Em horas
+      const duracao = (dataFimLocal - dataInicioLocal) / 3600000;
       if (duracao <= 0 || duracao > 24) {
         return res.status(400).json({ erro: 'Duração deve estar entre 0 e 24 horas' });
       }
 
       const valorTotal = parseFloat(quadra.valorPorHora) * duracao;
 
-      // Gerar código de segurança
       const codigoSeguranca = securityService.gerarCodigoSeguranca();
 
       const statusInicial = quadra.requerAprovacao ? 'AGUARDANDO_APROVACAO' : 'RESERVADO';
 
-      // Criar reserva em transação
       const novaReserva = await prisma.$transaction(async (tx) => {
         return tx.reserva.create({
           data: {
@@ -363,7 +341,6 @@ const reservaController = {
     }
   },
 
-  // Obter detalhes de uma reserva
   getById: async (req, res) => {
     const { id } = req.params;
 
@@ -373,7 +350,6 @@ const reservaController = {
         return res.status(404).json({ erro: 'Reserva não encontrada' });
       }
 
-      // Verificar permissão (locador da quadra ou locatário)
       if (req.user.tipo === 'LOCADOR' && reserva.quadra.locadorId !== req.user.id) {
         return res.status(403).json({ erro: 'Você não tem permissão para visualizar esta reserva' });
       }
@@ -381,7 +357,6 @@ const reservaController = {
         return res.status(403).json({ erro: 'Você não tem permissão para visualizar esta reserva' });
       }
 
-      // Filtrar código de segurança baseado em permissões
       const reservaComSeguranca = securityService.filtrarCodigosSeguranca(
         reserva,
         req.user.id,
@@ -398,7 +373,6 @@ const reservaController = {
     }
   },
 
-  // Atualizar status de reserva (locador aprova/rejeita, locatário cancela)
   updateStatus: async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
@@ -416,15 +390,12 @@ const reservaController = {
         return res.status(404).json({ erro: 'Reserva não encontrada' });
       }
 
-      // Verificar permissões baseado no status que quer atualizar
       const isLocador = req.user.tipo === 'LOCADOR' && reserva.quadra.locadorId === req.user.id;
       const isLocatario = req.user.tipo === 'LOCATARIO' && reserva.locatarioId === req.user.id;
 
-      // Locador pode atualizar para qualquer status
       if (isLocador) {
         const reservaAtualizada = await reservaModel.update(id, { status });
 
-        // Enviar email informando ao locatário
         if (status === 'RESERVADO') {
           emailService.enviar(
             reservaAtualizada.locatario.email,
@@ -442,7 +413,6 @@ const reservaController = {
             `
           );
         } else if (status === 'CANCELADO') {
-          // Locador cancelando reserva - enviar email ao locatário
           const motivo = req.body?.motivo || '';
           emailService.notificarCancelamentoPorLocador(
             reservaAtualizada.locatario,
@@ -467,7 +437,6 @@ const reservaController = {
         });
       }
 
-      // Locatário só pode cancelar sua própria reserva
       if (isLocatario && status === 'CANCELADO') {
         if (reserva.status === 'CANCELADO') {
           return res.status(400).json({ erro: 'Reserva já foi cancelada' });
@@ -481,7 +450,6 @@ const reservaController = {
           });
         }
 
-        // Se é RESERVADO ou AGUARDANDO_APROVACAO, processar fila
         if (['RESERVADO', 'AGUARDANDO_APROVACAO'].includes(reserva.status)) {
           await filaService.processarProximaFila(
             reserva.quadraId,
@@ -492,7 +460,6 @@ const reservaController = {
 
         const reservaCancelada = await reservaModel.update(id, { status: 'CANCELADO' });
 
-        // Enviar notificação de cancelamento por email (locatário cancelando)
         const motivo = req.body?.motivo || '';
         emailService.notificarCancelamentoPorLocatario(
           reservaCancelada.quadra.locador,
@@ -517,7 +484,6 @@ const reservaController = {
         });
       }
 
-      // Se chegou aqui, locatário tentou atualizar para status não permitido
       return res.status(403).json({ 
         erro: 'Locatário só pode cancelar (status=CANCELADO) sua própria reserva' 
       });
@@ -527,7 +493,6 @@ const reservaController = {
     }
   },
 
-  // Cancelar reserva (locatário ou locador)
   cancel: async (req, res) => {
     const { id } = req.params;
 
@@ -537,7 +502,6 @@ const reservaController = {
         return res.status(404).json({ erro: 'Reserva não encontrada' });
       }
 
-      // Verificar permissão
       if (req.user.tipo === 'LOCADOR' && reserva.quadra.locadorId !== req.user.id) {
         return res.status(403).json({ erro: 'Você não tem permissão para cancelar esta reserva' });
       }
@@ -545,12 +509,10 @@ const reservaController = {
         return res.status(403).json({ erro: 'Você não tem permissão para cancelar esta reserva' });
       }
 
-      // Validar se pode cancelar (não está cancelada)
       if (reserva.status === 'CANCELADO') {
         return res.status(400).json({ erro: 'Reserva já foi cancelada' });
       }
 
-      // Locatário deve respeitar a antecedência mínima configurada na quadra
       if (req.user.tipo === 'LOCATARIO') {
         const horasAntecedencia = reserva.quadra.horasAntecedenciaCancelamento ?? 6;
         const horasRestantes = (new Date(reserva.dataInicio) - new Date()) / 3600000;
@@ -561,7 +523,6 @@ const reservaController = {
         }
       }
 
-      // Se é RESERVADO ou AGUARDANDO_APROVACAO, processar fila
       if (['RESERVADO', 'AGUARDANDO_APROVACAO'].includes(reserva.status)) {
         console.log(`\n🔄 Processando fila para: ${reserva.quadraId} - ${reserva.dataInicio}`);
         try {
@@ -571,23 +532,21 @@ const reservaController = {
             reserva.dataFim
           );
           if (proximaFila) {
-            console.log(`✅ Próximo da fila ofertado: ${proximaFila.locatario.nome}`);
+            console.log(`Próximo da fila ofertado: ${proximaFila.locatario.nome}`);
           } else {
-            console.log(`ℹ️ Nenhuma fila para este horário`);
+            console.log(`Nenhuma fila para este horário`);
           }
         } catch (erroFila) {
-          console.error(`❌ Erro ao processar fila: ${erroFila.message}`);
+          console.error(`Erro ao processar fila: ${erroFila.message}`);
         }
       }
 
       const reservaCancelada = await reservaModel.update(id, { status: 'CANCELADO' });
 
-      // Enviar notificação de cancelamento por email
       const isLocadorCancelando = req.user.tipo === 'LOCADOR';
       const motivo = req.body?.motivo || '';
       
       if (isLocadorCancelando) {
-        // Locador cancelou - notificar locatário
         emailService.notificarCancelamentoPorLocador(
           reservaCancelada.locatario,
           reservaCancelada.quadra,
@@ -595,7 +554,6 @@ const reservaController = {
           motivo
         );
       } else {
-        // Locatário cancelou - notificar locador
         emailService.notificarCancelamentoPorLocatario(
           reservaCancelada.quadra.locador,
           reservaCancelada.quadra,
@@ -619,7 +577,6 @@ const reservaController = {
     }
   },
 
-  // Listar reservas de uma quadra específica (para validação de conflitos)
   getReservasByQuadra: async (req, res) => {
     const { quadraId } = req.params;
 
@@ -631,7 +588,6 @@ const reservaController = {
 
       const reservas = await reservaModel.findByQuadra(quadraId);
 
-      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
       const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
         reservas,
         req.user.id,
@@ -663,7 +619,6 @@ const reservaController = {
     }
   },
 
-  // Listar clientes e histórico de reservas para uma quadra específica
   getClientesByQuadra: async (req, res) => {
     try {
       if (req.user.tipo !== 'LOCADOR') {
@@ -684,7 +639,6 @@ const reservaController = {
       const totalGasto = reservas.reduce((sum, reserva) => sum + parseFloat(reserva.valorTotal), 0);
       const totalClientes = new Set(reservas.map(r => r.locatarioId)).size;
 
-      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
       const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
         reservas,
         req.user.id,
@@ -721,7 +675,6 @@ const reservaController = {
     }
   },
 
-  // Listar clientes únicos de todas as quadras de um locador
   getClientesByLocador: async (req, res) => {
     try {
       if (req.user.tipo !== 'LOCADOR') {
@@ -748,7 +701,6 @@ const reservaController = {
     }
   },
 
-  // Listar histórico de todos os clientes do locador autenticado
   getHistoricoLocador: async (req, res) => {
     try {
       if (req.user.tipo !== 'LOCADOR') {
@@ -759,7 +711,6 @@ const reservaController = {
       const totalGasto = reservas.reduce((sum, reserva) => sum + parseFloat(reserva.valorTotal), 0);
       const totalClientes = new Set(reservas.map(r => r.locatarioId)).size;
 
-      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
       const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
         reservas,
         req.user.id,
@@ -795,7 +746,6 @@ const reservaController = {
     }
   },
 
-  // Histórico de reservas do locatário autenticado
   getHistoricoLocatario: async (req, res) => {
     try {
       if (req.user.tipo !== 'LOCATARIO') {
@@ -832,22 +782,18 @@ const reservaController = {
     }
   },
 
-  // Timer da próxima reserva do locatário (melhor prática: usa token)
   proximaReserva: async (req, res) => {
     try {
-      // Usar o ID do token (melhor prática de segurança)
       const locatarioId = req.user.id;
 
       if (req.user.tipo !== 'LOCATARIO') {
         return res.status(403).json({ erro: 'Apenas locatários podem consultar suas próximas reservas' });
       }
 
-      // Buscar todas as reservas do locatário
       const reservas = await reservaModel.findByLocatario(locatarioId);
 
       const agora = new Date();
 
-      // 1. Procurar por reservas AGUARDANDO_APROVACAO no futuro (alta prioridade)
       const reservasAguardando = reservas
         .filter(r => r.status === 'AGUARDANDO_APROVACAO' && new Date(r.dataInicio) > agora)
         .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
@@ -894,12 +840,10 @@ const reservaController = {
         });
       }
 
-      // 2. Se não houver aguardando, procurar por reservas RESERVADO no futuro
       const proximasReservas = reservas
         .filter(r => r.status === 'RESERVADO' && new Date(r.dataInicio) > agora)
         .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
 
-      // Se não houver próximas reservas
       if (proximasReservas.length === 0) {
         return res.json({
           temReserva: false,
@@ -909,11 +853,9 @@ const reservaController = {
         });
       }
 
-      // Pegar a primeira (próxima) reserva confirmada
       const proxima = proximasReservas[0];
       const dataInicio = new Date(proxima.dataInicio);
 
-      // Calcular tempo restante
       const tempoRestante = dataInicio - agora;
 
       const dias = Math.floor(tempoRestante / (1000 * 60 * 60 * 24));
@@ -955,7 +897,6 @@ const reservaController = {
     }
   },
 
-  // Timer da próxima reserva de outro locatário (para locadores gerenciarem)
   proximaReservaLocador: async (req, res) => {
     try {
       const { locatarioId } = req.params;
@@ -968,10 +909,8 @@ const reservaController = {
         return res.status(403).json({ erro: 'Apenas locadores podem consultar próximas reservas de clientes' });
       }
 
-      // Buscar todas as reservas do locatário
       const reservas = await reservaModel.findByLocatario(Number(locatarioId));
 
-      // Validar que essas reservas pertencem às quadras do locador
       const minhasQuadras = await prisma.quadra.findMany({
         where: { locadorId: req.user.id }
       });
@@ -985,7 +924,6 @@ const reservaController = {
 
       const agora = new Date();
 
-      // 1. Procurar por reservas AGUARDANDO_APROVACAO no futuro (alta prioridade)
       const reservasAguardando = minhasReservas
         .filter(r => r.status === 'AGUARDANDO_APROVACAO' && new Date(r.dataInicio) > agora)
         .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
@@ -1033,12 +971,10 @@ const reservaController = {
         });
       }
 
-      // 2. Se não houver aguardando, procurar por reservas RESERVADO no futuro
       const proximasReservas = minhasReservas
         .filter(r => r.status === 'RESERVADO' && new Date(r.dataInicio) > agora)
         .sort((a, b) => new Date(a.dataInicio) - new Date(b.dataInicio));
 
-      // Se não houver próximas reservas
       if (proximasReservas.length === 0) {
         return res.json({
           temReserva: false,
@@ -1050,11 +986,9 @@ const reservaController = {
         });
       }
 
-      // Pegar a primeira (próxima) reserva confirmada
       const proxima = proximasReservas[0];
       const dataInicio = new Date(proxima.dataInicio);
 
-      // Calcular tempo restante
       const tempoRestante = dataInicio - agora;
 
       const dias = Math.floor(tempoRestante / (1000 * 60 * 60 * 24));
@@ -1097,7 +1031,6 @@ const reservaController = {
     }
   },
 
-  // Buscar todas as reservas do locador para um dia específico
   getReservasLocadorDia: async (req, res) => {
     try {
       if (req.user.tipo !== 'LOCADOR') {
@@ -1110,7 +1043,6 @@ const reservaController = {
         return res.status(400).json({ erro: 'Parâmetro obrigatório: data (formato: YYYY-MM-DD)' });
       }
 
-      // Validar formato da data YYYY-MM-DD
       const regexData = /^\d{4}-\d{2}-\d{2}$/;
       if (!regexData.test(data)) {
         return res.status(400).json({ erro: 'Formato de data inválido. Use: YYYY-MM-DD' });
@@ -1125,7 +1057,6 @@ const reservaController = {
 
       const reservas = await reservaModel.findByLocadorAndDate(req.user.id, data);
 
-      // Filtrar códigos de segurança - locador vê todos os códigos de suas quadras
       const reservasComSeguranca = securityService.filtrarCodigosSeguranca(
         reservas,
         req.user.id,
@@ -1162,7 +1093,6 @@ const reservaController = {
     }
   },
 
-  // Bloquear um horário em uma quadra do locador (manutenção / evento)
   bloquearHorario: async (req, res) => {
     const { quadraId, dataInicio, dataFim, motivo } = req.body;
     const locadorId = req.user.id;
@@ -1191,7 +1121,7 @@ const reservaController = {
       const bloqueio = await prisma.reserva.create({
         data: {
           quadraId: Number(quadraId),
-          locatarioId: locadorId, // locador usa o próprio ID como placeholder
+          locatarioId: locadorId,
           dataInicio: dataInicioObj,
           dataFim: dataFimObj,
           valorTotal: 0,
@@ -1218,7 +1148,6 @@ const reservaController = {
     }
   },
 
-  // Desbloquear / remover um bloqueio criado pelo locador
   desbloquearHorario: async (req, res) => {
     const { id } = req.params;
     const locadorId = req.user.id;
@@ -1251,7 +1180,6 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
     return { valido: false, erro: 'A quadra não possui horários de funcionamento configurados' };
   }
 
-  // Percorrer cada dia no intervalo e validar
   const dataAtual = new Date(dataInicio);
   while (dataAtual < dataFim) {
     const diaSemana = dataAtual.getDay();
@@ -1264,7 +1192,6 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
       };
     }
 
-    // Para o primeiro dia, validar hora de início
     if (dataAtual.getTime() === dataInicio.getTime()) {
       const horaInicio = dataInicio.getHours() + ':' + String(dataInicio.getMinutes()).padStart(2, '0');
       if (horaInicio < horario.horaAbertura) {
@@ -1275,7 +1202,6 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
       }
     }
 
-    // Para o último dia, validar hora de término
     if (dataAtual.getDate() === dataFim.getDate() && dataAtual.getMonth() === dataFim.getMonth()) {
       const horaFim = dataFim.getHours() + ':' + String(dataFim.getMinutes()).padStart(2, '0');
       if (horaFim > horario.horaFechamento) {
@@ -1286,7 +1212,6 @@ function validarHorariosFuncionamento(quadra, dataInicio, dataFim) {
       }
     }
 
-    // Avançar um dia
     dataAtual.setDate(dataAtual.getDate() + 1);
   }
 
@@ -1318,14 +1243,12 @@ reservaController.verificarCodigoSeguranca = async (req, res) => {
   const { codigo } = req.body;
 
   try {
-    // Validar entrada
     if (!codigo || typeof codigo !== 'string') {
       return res.status(400).json({ 
         erro: 'Parâmetro obrigatório: codigo (string)' 
       });
     }
 
-    // Validar formato do código
     if (!securityService.validarFormatoCodigo(codigo)) {
       return res.status(400).json({ 
         erro: 'Formato de código inválido. Use 4 caracteres alfanuméricos (0-9, A-Z)',
@@ -1333,13 +1256,11 @@ reservaController.verificarCodigoSeguranca = async (req, res) => {
       });
     }
 
-    // Buscar reserva
     const reserva = await reservaModel.findById(id);
     if (!reserva) {
       return res.status(404).json({ erro: 'Reserva não encontrada' });
     }
 
-    // Verificar permissão (locador da quadra ou locatário da reserva)
     const isLocador = req.user.tipo === 'LOCADOR' && reserva.quadra.locadorId === req.user.id;
     const isLocatario = req.user.tipo === 'LOCATARIO' && reserva.locatarioId === req.user.id;
 
@@ -1349,18 +1270,15 @@ reservaController.verificarCodigoSeguranca = async (req, res) => {
       });
     }
 
-    // Validar se a reserva tem código
     if (!reserva.codigoSeguranca) {
       return res.status(400).json({ 
         erro: 'Esta reserva não possui código de segurança associado' 
       });
     }
 
-    // Comparar código (case-insensitive para facilitar, mas armazenamos em maiúscula)
     const codigoFornecido = codigo.toUpperCase();
     const codigoValido = reserva.codigoSeguranca === codigoFornecido;
 
-    // Retornar resultado
     if (codigoValido) {
       return res.json({
         valido: true,
@@ -1386,7 +1304,6 @@ reservaController.verificarCodigoSeguranca = async (req, res) => {
         }
       });
     } else {
-      // Código inválido
       return res.status(400).json({
         valido: false,
         erro: 'Código de segurança incorreto',

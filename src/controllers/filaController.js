@@ -4,9 +4,6 @@ const reservaModel = require('../models/reservaModel');
 const { formatarISOLocal } = require('../utils/dateUtils');
 
 const filaController = {
-  /**
-   * Confirmar uma oferta de reserva (locatário confirma que quer)
-   */
   confirmarOferta: async (req, res) => {
     const { id } = req.params;
     const locatarioId = req.user.id;
@@ -14,7 +11,6 @@ const filaController = {
     try {
       const reservaConfirmada = await filaService.confirmarOferta(id, locatarioId);
 
-      // Enviar email confirmando ao locatário
       await emailService.enviar(
         reservaConfirmada.locatario.email,
         `${reservaConfirmada.quadra.nome} - Sua confirmação foi recebida! ⏳`,
@@ -58,7 +54,6 @@ const filaController = {
   buscarFila: async (req, res) => {
     try {
       if (req.user.tipo === 'LOCADOR') {
-        // Locador: ver fila de espera de uma quadra específica
         const { quadraId, dataInicio, dataFim } = req.query;
 
         if (!quadraId || !dataInicio || !dataFim) {
@@ -67,13 +62,11 @@ const filaController = {
           });
         }
 
-        // Validar se o usuário é locador da quadra
         const quadra = await reservaModel.findByQuadra(quadraId);
         if (quadra.length === 0) {
           return res.status(404).json({ erro: 'Quadra não encontrada' });
         }
 
-        // Validar se é dele
         if (quadra[0].quadra.locadorId !== req.user.id) {
           return res.status(403).json({
             erro: 'Você não tem permissão para visualizar a fila desta quadra'
@@ -101,7 +94,6 @@ const filaController = {
         });
 
       } else if (req.user.tipo === 'LOCATARIO') {
-        // Locatário: ver todas as suas reservas e filas de espera
         const reservas = await reservaModel.findByLocatario(req.user.id);
 
         const reservasFormatadas = reservas.map(r => ({
@@ -150,7 +142,6 @@ const filaController = {
         return res.status(404).json({ erro: 'Reserva não encontrada' });
       }
 
-      // Validar permissão
       if (req.user.tipo === 'LOCADOR' && reserva.quadra.locadorId !== req.user.id) {
         return res.status(403).json({
           erro: 'Você não tem permissão para visualizar esta reserva'

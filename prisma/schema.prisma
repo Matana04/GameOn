@@ -50,6 +50,8 @@ model Quadra {
   cidade       String?
   estado       String?
   cep          String?
+  latitude     Float?
+  longitude    Float?
   horasAntecedenciaCancelamento Int     @default(6)
   requerAprovacao               Boolean @default(true)
   locadorId    Int
