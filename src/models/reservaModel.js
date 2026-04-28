@@ -11,8 +11,9 @@ function formatarReserva(reserva) {
   return {
     ...reserva,
     quadra: normalizarQuadra(reserva.quadra),
-    dataInicio: formatarISOLocal(reserva.dataInicio),
-    dataFim: formatarISOLocal(reserva.dataFim)
+    // manter campos de data como Date aqui; os controllers devem formatar para ISO local quando necessário
+    dataInicio: reserva.dataInicio,
+    dataFim: reserva.dataFim
   };
 }
 
