@@ -259,6 +259,7 @@ const reservaController = {
                 dataInicio: formatarISOLocal(reservaFila.dataInicio),
                 dataFim: formatarISOLocal(reservaFila.dataFim),
                 duracao: `${(dataFimObj - dataInicioObj) / 3600000} horas`
+                duracao: `${(dataFimObj - dataInicioObj) / 3600000} horas`
               },
               valorTotal: reservaFila.valorTotal,
               status: 'EM_FILA',
